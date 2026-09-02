@@ -1,0 +1,4 @@
+interface:
+  display_name: "Collaborative Development Loop"
+  short_description: "Plan, implement, review, fix, and commit with subagents"
+  default_prompt: "Use $collaborative-development-workflow to plan, implement, review, fix, and locally commit this coding task."
