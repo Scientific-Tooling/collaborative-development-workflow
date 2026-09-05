@@ -66,11 +66,20 @@ Use these defaults unless the user or repository specifies a stricter requiremen
 | Child validation | focused only; full suite owned by main |
 | Commit/push | local commit after acceptance; push false |
 
-The default frozen-snapshot review budget is `review_wait_budget=2400s`, allocated as:
+Use a tiered frozen-snapshot review budget and choose the tier before the snapshot is
+frozen. Record the selected values in the reviewer `TaskSpec`; the snapshot budget is
+one shared wall-clock budget for the integrated review or the complete review set.
+
+| Review tier | Use when | `review_wait_budget` | `review_initial_budget` |
+| --- | --- | ---: | ---: |
+| Standard | small or tightly coupled integrated review | `3600s` (60 min) | `1800s` (30 min) |
+| Extended | broad, cross-cutting, high-risk, long-running, or `review_set` review | `5400s` (90 min) | `3600s` (60 min) |
+
+The standard frozen-snapshot review budget is `review_wait_budget=3600s`, allocated as:
 
 ```text
-review_wait_budget                     = 2400s
-review_initial_budget                  = 600s
+review_wait_budget                     = 3600s
+review_initial_budget                  = 1800s
 review_recovery_grace_budget            = 60s
 review_replacement_decision_reserve_budget = 120s
 review_spawn_reserve_budget             = 120s
@@ -78,12 +87,18 @@ review_replacement_min_budget          >= 1500s
 review_replacement_limit                = 1
 ```
 
+For the extended tier, use `review_wait_budget=5400s` and
+`review_initial_budget=3600s`; the other values remain unchanged. Never configure an
+initial reviewer slice below `1800s`, and increase the tier rather than shortening the
+reviewer's audit window when the impact scope is broad or risk-bearing.
+
 The one permitted replacement may consume only the remaining portion of this same
 snapshot budget. It never receives a fresh clock because its scope is narrower. The
 parent must confirm the predecessor has stopped, atomically claim the replacement slot,
-and retain enough time for spawn/binding plus at least `1500s` of effective review. The
-user may explicitly raise `review_replacement_min_budget` (for example to `1500s` or
-more), but no override may reduce the minimum below `1500s`.
+and retain enough time for spawn/binding plus at least `1500s` of effective review. A
+custom budget may be longer, but must preserve the same reserve arithmetic and may not
+reduce the initial reviewer slice below `1800s` or the replacement minimum below
+`1500s`.
 
 Use `runtime_atomic` identity binding when available. A read-only reviewer may fall back
 to `transport_bound_provisional` only when the runtime can bind the exact invocation,

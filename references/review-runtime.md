@@ -74,7 +74,7 @@ validate_deadline_inputs(values):
     require each optional timing field is exactly UNSET/UNKNOWN as documented or a
         finite sample; a non-finite value must not be treated as absent
     require every duration is finite and nonnegative
-    require review_wait_budget > 0 and review_initial_budget > 0
+    require review_wait_budget > 0 and review_initial_budget >= 1800s
     require review_replacement_min_budget >= 1500s
     require review_wait_budget >= review_initial_budget +
         review_recovery_grace_budget + review_replacement_decision_reserve_budget +
