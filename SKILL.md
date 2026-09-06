@@ -72,22 +72,23 @@ one shared wall-clock budget for the integrated review or the complete review se
 
 | Review tier | Use when | `review_wait_budget` | `review_initial_budget` |
 | --- | --- | ---: | ---: |
-| Standard | small or tightly coupled integrated review | `3600s` (60 min) | `1800s` (30 min) |
-| Extended | broad, cross-cutting, high-risk, long-running, or `review_set` review | `5400s` (90 min) | `3600s` (60 min) |
+| Standard | small or tightly coupled integrated review | `7200s` (120 min) | `1800s` (30 min) |
+| Extended | broad, cross-cutting, high-risk, long-running, or `review_set` review | `10800s` (180 min) | `3600s` (60 min) |
 
-The standard frozen-snapshot review budget is `review_wait_budget=3600s`, allocated as:
+The standard frozen-snapshot review budget is `review_wait_budget=7200s`, allocated as:
 
 ```text
-review_wait_budget                     = 3600s
+review_wait_budget                     = 7200s
 review_initial_budget                  = 1800s
 review_recovery_grace_budget            = 60s
 review_replacement_decision_reserve_budget = 120s
 review_spawn_reserve_budget             = 120s
 review_replacement_min_budget          >= 1500s
+additional_shared_headroom              = 1800s
 review_replacement_limit                = 1
 ```
 
-For the extended tier, use `review_wait_budget=5400s` and
+For the extended tier, use `review_wait_budget=10800s` and
 `review_initial_budget=3600s`; the other values remain unchanged. Never configure an
 initial reviewer slice below `1800s`, and increase the tier rather than shortening the
 reviewer's audit window when the impact scope is broad or risk-bearing.
