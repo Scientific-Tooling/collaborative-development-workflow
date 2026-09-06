@@ -32,8 +32,8 @@ FOCUSED_CHECKS: <narrow checks for this task>
 EXECUTION: foreground | background
 ISOLATION: shared-read-only | shared-writer | worktree
 BUDGET: <time, turns, and/or tokens>
-MODEL: <selected model; default gpt-5.6-luna, or gpt-5.6-terra for complex tasks>
-REASONING_EFFORT: <usually max; record any runtime fallback>
+MODEL: <gpt-5.6-luna for every delegated role; pass explicitly>
+REASONING_EFFORT: <xhigh for simple bounded child work or standard review; max for complex/high-risk child work or extended/high-risk/review_set review; pass explicitly and record any runtime fallback>
 FULL_SUITE_OWNER: main
 RESUMABLE: parent-declared task capability yes | no (not a child report assertion)
 SNAPSHOT: snapshot_id=<immutable artifact identity or NONE>; artifact_path=<read-only path/URI or NONE>; content_identity=<hash/manifest identity>

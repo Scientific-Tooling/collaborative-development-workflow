@@ -1,6 +1,6 @@
 ---
 name: collaborative-development-workflow
-description: "Orchestrate a repeatable, impact-scoped multi-agent software workflow: analyze a coding request, plan adaptively with optional read-only delegation, implement and review changed paths, defer repository-wide validation to final acceptance, and create a local commit. Use when the user asks for subagent delegation, human-in-the-loop planning, plan/implement/review loops, workflow-driven coding, or a reusable engineering process across repositories."
+description: "Use for non-trivial coding changes that need an impact-scoped plan → bounded implementation → frozen-snapshot review → targeted fix/review loop → final validation → local commit. Do not use for simple explanations or read-only questions."
 ---
 
 # Collaborative Development Workflow
@@ -59,12 +59,44 @@ Use these defaults unless the user or repository specifies a stricter requiremen
 | Planning | adaptive; user decision gate on-demand |
 | Implementation | main agent for small/tightly coupled work; bounded milestones for larger work |
 | Scope | impact-first |
-| Models | `gpt-5.6-luna`, `reasoning_effort=max`; `gpt-5.6-terra`, `max` for cross-cutting/high-risk/long-running work |
+| Models | delegated child agents use `gpt-5.6-luna`; simple bounded work uses `xhigh` (UI: xHigh), complex/high-risk work uses `max`; standard reviewer uses `xhigh`, extended/high-risk reviewer uses `max`; see the model policy below |
 | Review | integrated-first; a fixed three-lane review set for broad scope; no-report recovery uses the single replacement slot unless a fresh round is explicitly authorized |
 | Review context | minimal: exact snapshot, acceptance criteria, impact paths, and focused checks |
 | Active delegated agents | 3–5, or the platform's lower limit; nested delegation depth 0 |
 | Child validation | focused only; full suite owned by main |
 | Commit/push | local commit after acceptance; push false |
+
+### Model and effort policy
+
+Resolve and record the model and reasoning effort in every delegated `TaskSpec`.
+This policy applies to child agents only; it does not change the main agent's
+already-selected session profile. Pass the model and effort explicitly on every
+delegated spawn so the child profile is auditable rather than inferred from runtime
+inheritance. Record the selected review tier, model, and effort before freezing the
+review snapshot.
+
+- Every delegated role uses `gpt-5.6-luna`.
+- For researchers, planners, implementers, and verifiers, use `xhigh` (the UI's
+  xHigh/Extra High setting) for simple, bounded, low-risk, or read-heavy work. Use
+  `max` for ambiguous, cross-cutting, high-risk, or long-running work.
+- For a standard integrated reviewer, use `gpt-5.6-luna` + `xhigh`.
+- For an extended, high-risk, long-running, or `review_set` review, use
+  `gpt-5.6-luna` + `max`.
+- Treat `xhigh` and `max` as explicit reasoning settings, not timeout values. If a
+  delay comes from binding, wrapper continuation, or recovery rather than model
+  execution, diagnose that path separately; never turn an empty wait into a result.
+- If the selected child profile cannot be applied or the runtime reports a fallback,
+  do not silently accept a different model or effort; surface the mismatch as a
+  blocked or user-decision state.
+- A `FINDINGS` result keeps its selected review profile for re-review by default.
+  Downgrade only after a fresh impact analysis proves the fix is local, low-risk, and
+  does not change the complete affected review set; record that decision in the
+  reviewer `TaskSpec`.
+- When changing the default reviewer profile, calibrate it on representative fixed
+  snapshots: keep the prompt, scope, tier, and focused checks constant, change one
+  model/effort variable at a time, and compare elapsed time, valid terminal-report
+  rate, coverage quality, and actionable finding quality. A faster `CLEAN` alone is
+  not evidence that the lower-effort profile is safe.
 
 Use a tiered frozen-snapshot review budget and choose the tier before the snapshot is
 frozen. Record the selected values in the reviewer `TaskSpec`; the snapshot budget is
@@ -180,7 +212,12 @@ when a wait does not produce a terminal report.
 
 Accept only a validated result for the exact frozen snapshot. If the reviewer returns
 `FINDINGS`, stop the review, apply only targeted fixes, refreeze, and rerun the complete
-affected review set. Never extend `CLEAN` from an older snapshot to later edits.
+affected review set with the pinned review profile by default. “Complete” means every
+acceptance obligation and primary lane attached to the new, impact-scoped snapshot—not
+the whole repository and not only the lines named in a finding. Keep explicit exclusions
+unless a concrete dependency invalidates them; if the fix changes the impact scope,
+recanonicalize it and choose the review tier again before freezing. Never extend `CLEAN`
+from an older snapshot to later edits.
 
 If an agent has no usable report, retain the review lock and treat the snapshot as
 `REVIEW_BLOCKED` until a runtime-owned stop is confirmed. Only then may the parent use
