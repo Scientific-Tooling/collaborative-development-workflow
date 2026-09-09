@@ -161,8 +161,9 @@ comparison are owned by `scripts/snapshot_tool.py` and described in
 
 `context-handoff-v2` is a bounded parent-owned handoff. `mode=independent` has no
 checkpoint, artifacts, or active work; it starts a new TaskSpec and does not inherit
-unrelated history. `mode=continuation` has exactly one validated checkpoint and may
-reference its artifact/content identity. The full capture/resume procedure is in
+unrelated history. `mode=continuation` has exactly one validated checkpoint and must
+include an artifact with the matching `content_identity` whenever that checkpoint
+names content. The full capture/resume procedure is in
 [`context-rollover.md`](context-rollover.md).
 
 Neither a result, snapshot, nor handoff grants permission to expand scope or perform

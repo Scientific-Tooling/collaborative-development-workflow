@@ -1213,6 +1213,16 @@ def validate_record(record: Any, kind: str) -> list[str]:
                 or record["source_run_id"] != record["run_id"]
             ):
                 raise ContractError("continuation handoff must preserve task and run identities")
+            if mode == "continuation":
+                checkpoint_identity = record["checkpoint"].get("content_identity")
+                if checkpoint_identity is not None and checkpoint_identity not in SENTINELS:
+                    if not any(
+                        artifact.get("content_identity") == checkpoint_identity
+                        for artifact in record["artifacts"]
+                    ):
+                        raise ContractError(
+                            "continuation checkpoint content_identity requires a matching artifact"
+                        )
     except (ContractError, KeyError, RecursionError) as exc:
         errors.append(str(exc))
     return sorted(set(errors))

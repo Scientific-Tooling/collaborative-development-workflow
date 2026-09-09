@@ -139,10 +139,13 @@ runtime-owned proofs.
 
 ### 5. Resolve findings
 
-For `FINDINGS`, apply only targeted, in-scope fixes, rerun affected checks, create a
-new snapshot, and rerun the complete affected review obligation. Ordinary
-findings-driven revision rounds do not require new user authorization. Allow two
-fix/review rounds; a third round requires explicit user authorization.
+For `FINDINGS`, apply only targeted, in-scope fixes, rerun affected checks, and create
+a new snapshot. Rerun the review against that snapshot: a single integrated review
+may narrow to affected obligations, but a fixed review set must rerun every lane and
+rebuild aggregate coverage. Never carry an old lane or `CLEAN` result across the new
+identity. Ordinary findings-driven revision rounds do not require new user
+authorization. Allow two fix/review rounds; a third round requires explicit user
+authorization.
 
 `REVIEW_UNAVAILABLE` means no usable independent reviewer result was delivered.
 `REVIEW_BLOCKED` means a result exists but its identity, scope, artifact, timing, or

@@ -761,7 +761,18 @@ class ContractToolTests(unittest.TestCase):
         }
         common["source_task_id"] = "task-1"
         common["source_run_id"] = "run-1"
+        self.assertTrue(contract_tool.validate_record(common, "context_handoff"))
+        common["artifacts"] = [
+            {
+                "kind": "checkpoint",
+                "artifact_id": "artifact-1",
+                "artifact_path": "/tmp/checkpoint-artifact",
+                "content_identity": "content-1",
+            }
+        ]
         self.assertEqual(contract_tool.validate_record(common, "context_handoff"), [])
+        common["artifacts"][0]["content_identity"] = "content-2"
+        self.assertTrue(contract_tool.validate_record(common, "context_handoff"))
 
     def test_task_spec_is_closed_and_binding_mode_matches(self) -> None:
         task = {

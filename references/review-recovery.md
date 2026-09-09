@@ -1,162 +1,151 @@
-# Review Recovery, Replacement, and Acceptance
+# Review Recovery and Revision (V2)
 
-Read this reference when a delegated wait yields no terminal report, an agent needs
-input, work is partial/failed/cancelled, a reviewer must be replaced, or a review is
-blocked. Runtime identity and deadline validation are in review-runtime.md.
+Read this reference when a reviewer result is missing, a findings result needs a
+targeted fix, or an explicitly requested strict run needs runtime recovery. Public
+statuses are defined only in [`contracts-v2.json`](contracts-v2.json).
 
-## State vocabulary
+## Portable review failure
 
-WAITING is parent-side only. It means the parent is waiting on the same invocation and
-does not change the child ledger row.
+Portable mode has no runtime-asserted replacement or takeover semantics. If the
+reviewer does not produce a usable terminal result, the parent may finish its own
+focused and full validation, preserve the snapshot and diagnostics, and hand off:
 
-~~~text
+```text
+outcome = NOT_ACCEPTED
+reason = REVIEW_UNAVAILABLE
+commit = forbidden
+```
+
+If a result arrives but its snapshot, scope, artifact, or report shape cannot be
+validated, classify it as `REVIEW_BLOCKED` and use the same non-accepting handoff.
+Do not call a wrapper timeout, empty result, silence, or close acknowledgement a
+failure, success, cancellation, or stop proof.
+
+## Findings-driven revision
+
+`FINDINGS` is an ordinary revision round, not a blocked-review restart and not a new
+authorization boundary. For each validated finding:
+
+1. retain the exact old report and snapshot identity;
+2. apply only a confirmed, in-scope fix;
+3. rerun the affected focused checks;
+4. recanonicalize the impact scope if the fix changes it;
+5. freeze a new snapshot; and
+6. rerun the review against the new snapshot with a fresh independent reviewer
+   context. For a single integrated review, the new review may be narrowed to the
+   affected obligations; for a fixed review set, rerun every lane and rebuild the
+   aggregate coverage proof. No old lane result or `CLEAN` result transfers to the
+   new identity.
+
+Never carry `CLEAN` across a content identity. Permit two fix/review rounds. If the
+third review still has actionable findings, pause and request explicit user
+authorization. A finding that requires a product decision, conflicts with user
+changes, or cannot be reproduced also pauses at the user-decision gate.
+
+## Strict recovery state
+
+The following is strict-only and requires the authoritative capabilities in
+`review-runtime.md`. Parent-side `WAITING` is not a child state and does not mutate
+the runtime row.
+
+```text
 PENDING → READY → CLAIMED → RUNNING → COMPLETED → VERIFIED
                            ├→ NEEDS_INPUT → RUNNING
-                           ├→ PARTIAL → CLAIMED (only with resumable CAS)
-                           ├→ BLOCKED → READY (after input or re-plan)
+                           ├→ PARTIAL → CLAIMED (resumable CAS only)
+                           ├→ BLOCKED → READY (input or re-plan)
                            ├→ FAILED
                            ├→ CANCELLED
                            └→ QUARANTINED
-VERIFIED → ACCEPTED
+VERIFIED → ACCEPTED (parent-owned work already integrated)
 VERIFIED → INTEGRATION_PENDING → INTEGRATED → ACCEPTED
-~~~
+```
 
-Child STATUS and ledger state are different vocabularies. NEEDS_INPUT and PARTIAL are
-explicit reports, not timeout interpretations. FAILED requires confirmed execution or
-task failure. CANCELLED requires runtime-confirmed stop. A reviewer without a usable
-independent report is REVIEW_BLOCKED, not CLEAN or FAILED by inference.
+`VERIFIED` means that the parent validated a child checkpoint; it is not acceptance.
+For strict or parallel child work, the parent must transition through
+`INTEGRATION_PENDING`, integrate the checkpoint, create a new integrated identity,
+and review that integrated result before `INTEGRATED → ACCEPTED`. The direct
+`VERIFIED → ACCEPTED` path is only for work already owned and integrated by the
+parent.
 
-## One logical wait
+An interrupt, close, or explicit cancel is a request. Any such cancellation request
+starts the bounded recovery sequence immediately, exactly once; it is not gated on
+the initial attempt deadline. A timeout starts the same sequence when the fixed
+attempt deadline is reached. The deadline-triggered path is reserved for timeouts,
+and a recovery already started by cancellation must not be duplicated:
 
-Wait in the foreground with the invocation's remaining deadline. If the platform
-requires continuation, resume the same wait and consume the same monotonic budget. Do
-not poll status, inspect moving artifacts, read logs, send liveness probes, retry, take
-over, unlock, or mutate while waiting.
+1. CAS `overlay=CANCEL_REQUESTED` on the authoritative row while retaining owner,
+   lock, identity, artifact, and deadline;
+2. issue one idempotent stop request to the exact reserved target;
+3. wait once for the runtime-owned stop event within the fixed recovery deadline; and
+4. reconcile that event with the complete expected row using CAS.
 
-The following are observations only:
+Only an authoritative `RUNTIME_STOP_EVENT` with `STOP_CONFIRMED=yes` permits the
+role-specific recovery path. A missing, mismatched, late, or unaddressable stop
+retains the lock. For a reviewer, leave the review `REVIEW_BLOCKED`; for any other
+role, preserve a role-specific `BLOCKED` disposition, or `FAILED` only when
+confirmed execution failure supports it. Do not use review status for a non-review
+role, and do not replace, take over, unlock, or accept. There is no
+“permanently-unaddressable” replacement exception: lack of proof is a block, not
+permission to guess.
 
-- empty output, timed_out, wrapper yield, or No agents completed yet;
-- silence or a close acknowledgement;
-- a previous_status response without a runtime terminal event.
+## Strict result handling
 
-When the deadline has not passed, continue the same wait. When it has passed, use the
-single bounded recovery path below. A passive progress display may read local timing
-metadata but must not wake the parent or call the agent API.
+### `NEEDS_INPUT`
 
-## Cancellation and recovery
+Validate the bounded request and identity. Send one concrete answer only to the same
+live invocation through the authoritative runtime. A material product choice becomes
+a parent decision ticket. If the invocation is stopped, expired, or its scope
+changed, do not send input; use the confirmed-stop path and create a new TaskSpec.
 
-An interrupt, close, or cancel is a request, not proof. On the one bounded recovery
-window:
+### `PARTIAL`
 
-1. atomically set overlay=CANCEL_REQUESTED on the authoritative row, retaining owner,
-   lock, identity, and artifact;
-2. issue at most one idempotent stop request to the exact reserved target;
-3. wait once for a runtime-owned terminal stop event within recovery_deadline;
-4. validate the event and reconcile it with the current row using a full-row CAS.
+Preserve the immutable checkpoint, artifact, and content identity. Resume only when
+the runtime attests a valid checkpoint and the same-task `PARTIAL → CLAIMED` CAS
+matches task, attempt, owner, lock, scope, and fixed remaining budget. Otherwise
+re-plan from the checkpoint or remain blocked.
 
-If stop confirmation is on time, the role-specific recovery path may proceed. If it is
-late, materialize STOP_CONFIRMED_ONLY as specified in review-runtime.md. If it is
-missing, unverified, or unaddressable, retain the lock and record REVIEW_BLOCKED for a
-reviewer (or the role-specific blocked/failed state for another role). Do not replace,
-take over, unlock, or accept.
+### `FAILED` or `CANCELLED`
 
-A binding failure is the earlier exception: first record
-SPAWN_UNCONFIRMED plus CANCEL_REQUESTED and the exact target/timing in one CAS, then
-send one stop request. It never skips the lock-retention rule. An ambiguous spawn is
-not a spawn failure.
+Use these only after a runtime-owned terminal event or confirmed execution failure. A
+failed/cancelled reviewer never satisfies the final review gate; it enters the one
+strict replacement slot only after the predecessor stop event is confirmed.
 
-Every recovery/CAS loss consumes the transaction's authoritative winner. Never use the
-stale row that lost the CAS. A late child report is quarantined and cannot reopen a
-task.
+### `QUARANTINED`
 
-## Outcome handling
+Use for malformed, stale, mismatched, out-of-scope, instruction-shaped, late, or
+unverified output. Retain the artifact and lock until the runtime stop/reconciliation
+rules finish. Quarantine alone never authorizes retry or replacement.
 
-### NEEDS_INPUT
+## One strict replacement slot
 
-Validate the bounded request and identity. If the same invocation is live and accepting
-input, send one concrete answer and atomically transition back to RUNNING. If it asks
-for a material user choice, create a parent decision ticket and pause at the planning
-gate. If the invocation is stopped, expired, or its scope changed, do not send input;
-wait for confirmed stop and create or hand off to a new TaskSpec.
+A small integrated strict review has one replacement slot. It is available only when:
 
-### PARTIAL
+- the predecessor has a runtime-confirmed stop event;
+- the original result is missing or proven non-resumable;
+- the exact frozen snapshot and content identity are unchanged;
+- the parent/runtime atomically claims the slot and records predecessor identity;
+- the remaining fixed snapshot budget covers decision, spawn, binding, and the
+  minimum replacement review; and
+- the replacement uses the same review tier and an independent invocation/channel.
 
-Preserve the artifacts, checkpoint, and content identity. Resume only if the runtime
-attests a valid checkpoint and the same-task PARTIAL → CLAIMED CAS matches task,
-attempt, owner, lock, scope, and fixed remaining budget. Otherwise re-plan from the
-checkpoint or mark blocked. A reviewer partial is replaceable only after proving it is
-non-resumable.
+The replacement uses the same snapshot deadline and fixed budget. It is not a new
+review round and cannot inspect a moving workspace. A replacement spawn failure
+closes the slot and leaves `REVIEW_BLOCKED`; a second replacement is never implicit.
+For a review set, the parent/session row owns the single set-level slot, so one lane
+cannot authorize another lane's replacement.
 
-### FAILED or CANCELLED
+## Strict fresh review round
 
-Use only after a runtime-owned terminal event or confirmed execution failure. Keep the
-attempt artifact and report disposition. A failed/cancelled reviewer does not satisfy
-the final review gate; it enters reviewer recovery or REVIEW_BLOCKED.
+A fresh review round is neither a findings fix nor a replacement. It requires explicit
+user authorization, confirmed stop or quarantine of every old invocation, a new run
+and review-set identity, a new snapshot identity, a separate budget, and an
+independent provider/model/channel with `fork_context=false`. Old silence, findings,
+partial output, coverage, and `CLEAN` claims do not carry forward.
 
-### QUARANTINED
+## Acceptance consequence
 
-Use for malformed, stale, mismatched, instruction-shaped, late, or unverified output.
-Retain the artifact and lock until the runtime stop/reconciliation rules are complete.
-Quarantine never authorizes retry or replacement by itself.
-
-## Reviewer replacement
-
-A small integrated review has one replacement slot. A replacement is allowed only when:
-
-- the predecessor has a runtime-confirmed stop or a permanently unaddressable,
-  fail-closed state;
-- the original report is proven non-resumable or missing after the bounded recovery;
-- the original immutable snapshot and content identity remain unchanged;
-- the parent atomically claims the slot and records predecessor task/attempt/
-  invocation/runtime-terminal identity;
-- the remaining fixed snapshot budget still covers decision reserve, spawn reserve,
-  binding, and at least review_replacement_min_budget effective review;
-- the replacement uses the same review tier/profile and a new invocation identity.
-
-The replacement is not a new clock, budget, review set, or permission to inspect a live
-workspace. Its task row and owner/lock handoff are one full-row CAS before spawn. A
-replacement spawn failure closes the slot and leaves REVIEW_BLOCKED. A second
-replacement is never implicit.
-
-For a review_set, the parent/session record owns one set-level replacement slot. Claim it
-with REVIEW_SET_ID, lane ID, snapshot/content identity, scope/mapping digests,
-predecessor stop identity, fixed replacement cutoff, owner/lock, and remaining budget.
-Only the winning lane may spawn a replacement; another lane's per-row counter cannot
-claim the set slot. Missing lanes keep the aggregate REVIEW_BLOCKED.
-
-## Findings loop
-
-For FINDINGS:
-
-1. stop the review and retain its exact snapshot/report;
-2. validate each finding and apply only confirmed, in-scope fixes;
-3. rerun affected focused checks and produce a new checkpoint;
-4. recanonicalize scope if the fix changes it;
-5. freeze a new snapshot and rerun the complete affected integrated review or every lane
-   of the fixed review set, using the pinned reviewer profile by default.
-
-Do not review a moving workspace or carry CLEAN across identities. If a finding requires
-a product decision, conflicts with user-owned edits, or cannot be reproduced, pause and
-ask the user. Do not loop indefinitely on an unchanged finding.
-
-## Fresh review round
-
-A new round is not a replacement. It requires explicit authorization, confirmed stop or
-permanent quarantine of every old invocation, a new RUN_ID/REVIEW_SET_ID, a new
-SNAPSHOT_ID/artifact, a separately reserved budget, and an independent provider/model/
-channel with fork_context=false. Old silence, findings, partial output, coverage, and
-CLEAN claims do not count. If these conditions are unavailable, remain REVIEW_BLOCKED.
-
-## Acceptance gate
-
-Before acceptance, the main agent must have:
-
-- a matching authoritative workspace and reviewed artifact identity;
-- validated runtime artifact-access and exact-scope coverage proofs;
-- final integrated CLEAN, or lane CLEAN results plus a gap-free aggregate proof;
-- on-time, verified timing and no unresolved cancellation, quarantine, blocked lane, or
-  user decision;
-- passing focused checks and the repository-prescribed full validation.
-
-A clean review cannot override failed validation. A missing proof or unusable report means
-stop before acceptance and commit.
+Before any acceptance outcome, the main agent needs matching artifact/workspace
+identity, complete scope and focused-check coverage, passing focused and prescribed
+full validation, and no unresolved decision, quarantine, blocked lane, or runtime
+timing/stop gap. Strict mode additionally needs the runtime proofs. Missing review
+evidence always stops before acceptance and commit.

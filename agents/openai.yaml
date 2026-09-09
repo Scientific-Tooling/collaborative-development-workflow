@@ -1,4 +1,7 @@
 interface:
   display_name: "Collaborative Development Loop"
-  short_description: "Plan, implement, review, fix, and commit with subagents"
-  default_prompt: "Use $collaborative-development-workflow to plan, implement, review, fix, and locally commit this coding task."
+  short_description: "Scoped plan, review, and validation loop"
+  default_prompt: "Use $collaborative-development-workflow to run a portable scoped plan, implementation, independent review, and validation for this coding task."
+
+policy:
+  allow_implicit_invocation: false
