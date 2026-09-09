@@ -31,20 +31,35 @@ Use NONE, UNSET, UNKNOWN, or NOT_RUN only where the owning schema permits them.
 
 ## Typed scope and checks
 
+These bounded aliases are canonical for this reference and for
+`context-rollover.md`. Objects are closed: unknown keys, NUL bytes, duplicate entries,
+reserved sentinel tokens, and values over the declared limits are invalid.
+
+~~~text
+Token<N> = ASCII token matching [A-Za-z0-9._:-], length 1..N bytes, excluding
+           NONE, UNSET, UNKNOWN, NOT_RUN, and UNASSIGNED
+BoundedText<N> = UTF-8 text, length 1..N bytes, with no NUL byte
+RepositoryPathV1 = BoundedText<512> that is repository-relative and has no
+                   absolute-path or parent-traversal component
+ScopeReferenceV1 = BoundedText<512> excluding the reserved sentinel strings; a
+                   path-like value also follows RepositoryPathV1
+~~~
+
 ~~~text
 ImpactScopeV1 = {
-  changed_paths: ordered unique repository-relative paths,
-  direct_callers: ordered unique path#symbol or module identifiers,
-  direct_consumers: ordered unique path#symbol or module identifiers,
-  mapped_tests_or_configuration: ordered unique paths or check IDs,
-  explicit_exclusions: ordered unique scope/component IDs,
+  changed_paths: 0..128 ordered unique RepositoryPathV1 values,
+  direct_callers: 0..128 ordered unique ScopeReferenceV1 values,
+  direct_consumers: 0..128 ordered unique ScopeReferenceV1 values,
+  mapped_tests_or_configuration: 0..128 ordered unique ScopeReferenceV1 values,
+  explicit_exclusions: 0..128 ordered unique ScopeReferenceV1 values,
   version: "impact-scope-v1"
 }
 
 FocusedCheckV1 = {
-  id: stable ID,
-  command_or_assertion: bounded command or static assertion,
-  covered_scope: subset of ImpactScopeV1 component IDs,
+  id: Token<128>,
+  command_or_assertion: BoundedText<1024> bounded command or static assertion,
+  covered_scope: 0..64 ordered unique ScopeReferenceV1 values that are a subset of
+                 ImpactScopeV1 component IDs,
   required: yes | no
 }
 ~~~
@@ -142,6 +157,10 @@ Do not pass secrets, unrelated conversation, or an unbounded repository dump. A 
 context is the default; use a fork only when history is genuinely required. A resumed
 task additionally receives the preceding validated report, preserved artifact identity,
 open risks, and exact next action.
+
+For a context-limit rollover or a fresh independent task, use the parent-owned
+[context-rollover.md](context-rollover.md) protocol. Its handoff artifact is not a child
+result, runtime ledger, lock, review proof, or acceptance signal.
 
 ## Identity binding
 

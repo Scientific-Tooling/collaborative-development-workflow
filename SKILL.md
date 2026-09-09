@@ -37,6 +37,10 @@ the user asks for delegation. Use the smallest workflow that supplies enough con
 - A wait observation is not a result. Silence, an empty response, wrapper timeout,
   continuation, or close acknowledgement does not mean failure, success, cancellation,
   or permission to replace or take over.
+- When context approaches its safe remaining budget, roll over only at a coherent
+  checkpoint using [context-rollover.md](references/context-rollover.md). A handoff
+  artifact never replaces runtime state, locks, active waits, review proof, or
+  acceptance.
 - Independent final review is mandatory before acceptance and commit. Tests and
   self-review cannot substitute for a runtime-bound CLEAN on the exact final identity.
 - Commit only after acceptance, and stage explicit task paths. Never use git add -A in a
@@ -69,6 +73,7 @@ owns its details and should not be copied into another file.
 | Any delegation, TaskSpec, result envelope, scope digest, coverage proof, or binding | [task-contracts.md](references/task-contracts.md) |
 | pre_spawn/post_spawn, snapshots, budgets, timing, runtime events, provenance, or CAS | [review-runtime.md](references/review-runtime.md) |
 | Wait continuation, timeout, cancellation, partial work, replacement, or blocked review | [review-recovery.md](references/review-recovery.md) |
+| Context near its safe limit, temporary handoff, fresh continuation, or independent task | [context-rollover.md](references/context-rollover.md) |
 | Full plan → implement → review → accept → commit sequence | [workflow.md](references/workflow.md) |
 | Planner/researcher/implementer/verifier/reviewer prompt | [agent-templates.md](references/agent-templates.md) |
 | Two or more assignments, background work, isolated worktrees, or cross-turn work | [coordination-protocol.md](references/coordination-protocol.md) |

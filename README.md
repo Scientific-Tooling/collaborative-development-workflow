@@ -15,6 +15,7 @@ integration, repository-wide validation, acceptance, and the final commit.
 - One-writer workspace discipline and isolated-worktree guidance
 - Content-addressed, read-only review snapshots
 - Runtime-bound reviewer reports and coverage proofs
+- Bounded context rollover and fresh-task handoffs
 - Explicit handling for timeouts, silence, cancellation, partial work, and
   replacement reviewers
 - Fail-closed acceptance when independent review evidence is unavailable
@@ -70,11 +71,16 @@ references/workflow.md           End-to-end lifecycle and acceptance gates
 references/agent-templates.md    Delegated role prompt templates
 references/failure-and-reporting.md
 references/coordination-protocol.md
+references/context-rollover.md       Context-limit handoff and fresh-task protocol
 ```
 
 Detailed references are loaded only when their operation requires them, keeping
 ordinary skill invocations small while retaining the full coordination protocol
 for high-risk cases.
+
+Context rollover uses a bounded, parent-owned manifest. Runtime task identity,
+ownership, locks, active waits, stop confirmation, review proof, and acceptance
+remain authoritative outside that temporary artifact.
 
 ## Validate locally
 
