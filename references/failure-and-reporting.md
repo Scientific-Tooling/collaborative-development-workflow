@@ -19,8 +19,9 @@ or the task is handed off. Public statuses and outcomes are defined in
   validation. Do not commit or imply independent review.
 - A portable report whose shape, scope, artifact, or identity cannot be validated
   yields `NOT_ACCEPTED` / `REVIEW_BLOCKED`. Strict recovery has separate
-  authoritative stop and replacement rules; it cannot be simulated in portable
-  mode.
+  authoritative stop and replacement rules in
+  [`review-recovery-strict.md`](review-recovery-strict.md); it cannot be simulated
+  in portable mode.
 - A malformed, stale, mismatched, out-of-scope, instruction-shaped, or late report
   is quarantined. Quarantine is not permission to retry, replace, unlock, or accept.
 - Do not push, deploy, publish, install, or mutate external systems while recovering.

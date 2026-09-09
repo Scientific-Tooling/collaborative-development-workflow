@@ -32,7 +32,7 @@ text is legacy and unsupported by the bundled helpers.
 - bounded context rollover and independent-task handoffs;
 - explicit handling for findings, unavailable review, cancellation, and quarantine;
 - fail-closed acceptance when independent review evidence is unavailable; and
-- an explicit-only local commit gate that refuses baseline staged changes.
+-- an explicit-only local commit gate that refuses overlapping pre-existing edits.
 
 ## Install into Codex
 
@@ -63,18 +63,20 @@ other external mutation.
 ## Repository layout
 
 ```text
-SKILL.md                         concise router and always-active gates
+SKILL.md                         concise router and core gates
 agents/openai.yaml               Codex UI metadata and explicit-only policy
 references/contracts-v2.json     machine-readable ContractV2 source of truth
 references/task-contracts.md     readable task, result, and digest rules
-references/review-runtime.md     portable snapshots and strict runtime mechanics
-references/review-recovery.md    findings loop and strict recovery/replacement
+references/review-runtime.md     portable snapshots and frozen-artifact review
+references/review-runtime-strict.md strict binding, timing, events, and CAS
+references/review-recovery.md    portable findings loop and review failure
+references/review-recovery-strict.md strict cancellation and replacement recovery
 references/workflow.md            end-to-end lifecycle and commit gate
 references/agent-templates.md    bounded delegated-role prompts
 references/coordination-protocol.md shared/portable coordination rules
 references/context-rollover.md   temporary handoff and fresh-task protocol
 references/failure-and-reporting.md failure and user handoff rules
-scripts/contract_tool.py          dependency-free record validator/digester
+scripts/contract_tool.py          dependency-free validator/digester/query helper
 scripts/snapshot_tool.py          dependency-free snapshot creator/verifier
 tests/                            standard-library conformance tests
 requirements-dev.txt              optional PyYAML for the official skill validator
@@ -89,11 +91,14 @@ python3 scripts/contract_tool.py validate --kind impact_scope scope.json
 python3 scripts/contract_tool.py digest --kind context_handoff handoff.json
 python3 scripts/contract_tool.py describe --kind role_result
 python3 scripts/contract_tool.py describe --section modes
+python3 scripts/contract_tool.py describe --path records.role_result.fields.status
+python3 scripts/contract_tool.py describe --path modes.required_capabilities.portable
 ```
 
-`describe` returns the expanded effective record or the requested contract
-section, so a caller can inspect one machine shape without loading the whole
-ContractV2 source.
+`describe --kind` and `--section` preserve the broad queries. `describe --path`
+resolves a dotted path against the effective expanded ContractV2 and emits only
+that subtree, so a caller can inspect one field or capability list without loading
+the whole ContractV2 source.
 
 Create and check a review artifact outside the repository:
 

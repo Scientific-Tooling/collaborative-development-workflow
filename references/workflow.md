@@ -2,8 +2,9 @@
 
 Read this reference for the full plan → implement → review → accept → optional
 commit sequence. Statuses and record fields come from
-[`contracts-v2.json`](contracts-v2.json); runtime-only strict mechanics live in
-`review-runtime.md` and `review-recovery.md`.
+[`contracts-v2.json`](contracts-v2.json); portable artifact mechanics live in
+`review-runtime.md`, while strict-only runtime and recovery mechanics live in
+`review-runtime-strict.md` and `review-recovery-strict.md`.
 
 ## 1. Analyze, establish scope, and preflight
 
@@ -21,7 +22,7 @@ Before editing or delegating:
 
 Portable is ready only when identifiable read-only subagents, terminal result
 delivery, and shared snapshot access are observable. Strict additionally needs the
-authoritative runtime capabilities in `review-runtime.md`. A missing strict
+authoritative runtime capabilities in `review-runtime-strict.md`. A missing strict
 capability stops before mutation; it is never a portable fallback.
 
 If required files overlap pre-existing edits, report the overlap before changing
@@ -83,29 +84,19 @@ references.
 
 ## 5. Findings and bounded rounds
 
-For a validated `FINDINGS` result:
-
-1. retain the old report and snapshot identity;
-2. apply only confirmed, in-scope fixes;
-3. rerun affected focused checks;
-4. recanonicalize scope if the fix changes it;
-5. create a new snapshot; and
-6. rerun the review against the new snapshot with a fresh reviewer context. For a
-   single integrated review, the new review may be narrowed to the affected
-   obligations; for a fixed review set, rerun every lane and rebuild the aggregate
-   coverage proof. No old lane result or `CLEAN` result transfers to the new identity.
-
-The old `CLEAN` never transfers across a content identity. Ordinary
-findings-driven revision rounds are not blocked-review restarts and do not need new
-user authorization. Permit two fix/review rounds; if the third review still has
-actionable findings, pause and request authorization before continuing.
+For a validated `FINDINGS` result, follow [`review-recovery.md`](review-recovery.md),
+which owns the portable revision procedure. Every content-changing fix requires a
+new snapshot and review identity; a fixed review set reruns every lane and rebuilds
+aggregate coverage, while no old lane or `CLEAN` result transfers. Ordinary
+findings-driven rounds do not need new user authorization; the bounded round limit
+and user-decision gates are defined in that reference.
 
 `REVIEW_UNAVAILABLE` means no usable independent result arrived. `REVIEW_BLOCKED`
 means a result exists but its identity, scope, artifact, or required proof is not
 valid. In portable mode either condition produces `NOT_ACCEPTED` and a handoff, not
 a commit. Strict replacement is a separate, bounded recovery operation and is
 allowed only after the authoritative stop confirmation specified in
-`review-recovery.md`.
+[`review-recovery-strict.md`](review-recovery-strict.md).
 
 ## 6. Independent acceptance
 

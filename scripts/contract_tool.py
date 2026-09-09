@@ -1332,9 +1332,21 @@ def _run(command: str, kind: str, input_path: str) -> int:
         return 2
 
 
-def _run_describe(*, kind: str | None, section: str | None) -> int:
-    if (kind is None) == (section is None):
-        print(json.dumps({"valid": False, "errors": ["describe requires exactly one of --kind or --section"]}, sort_keys=True))
+def _lookup_contract_path(path: str) -> Any:
+    if not isinstance(path, str) or not path:
+        raise ContractError("describe --path must be a non-empty dotted path")
+    current: Any = CONTRACT
+    for component in path.split("."):
+        if not component or not isinstance(current, dict) or component not in current:
+            raise ContractError(f"unknown ContractV2 path: {path}")
+        current = current[component]
+    return current
+
+
+def _run_describe(*, kind: str | None, section: str | None, path: str | None) -> int:
+    selected = sum(value is not None for value in (kind, section, path))
+    if selected != 1:
+        print(json.dumps({"valid": False, "errors": ["describe requires exactly one of --kind, --section, or --path"]}, sort_keys=True))
         return 2
     value: Any
     if kind is not None:
@@ -1342,11 +1354,18 @@ def _run_describe(*, kind: str | None, section: str | None) -> int:
             print(json.dumps({"valid": False, "errors": [f"unknown ContractV2 record kind: {kind}"]}, sort_keys=True))
             return 2
         value = CONTRACT["records"][kind]
-    else:
+    elif section is not None:
         if section not in CONTRACT:
             print(json.dumps({"valid": False, "errors": [f"unknown ContractV2 section: {section}"]}, sort_keys=True))
             return 2
         value = CONTRACT[section]
+    else:
+        try:
+            assert path is not None
+            value = _lookup_contract_path(path)
+        except ContractError as exc:
+            print(json.dumps({"valid": False, "errors": [str(exc)]}, sort_keys=True))
+            return 2
     print(json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
     return 0
 
@@ -1362,13 +1381,14 @@ def build_parser() -> argparse.ArgumentParser:
     selection = describe.add_mutually_exclusive_group(required=True)
     selection.add_argument("--kind", choices=sorted(CONTRACT["records"]))
     selection.add_argument("--section", choices=sorted(CONTRACT))
+    selection.add_argument("--path", metavar="DOTTED_PATH", help="effective ContractV2 path, such as records.role_result.fields.status")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "describe":
-        return _run_describe(kind=args.kind, section=args.section)
+        return _run_describe(kind=args.kind, section=args.section, path=args.path)
     return _run(args.command, args.kind, args.input)
 
 

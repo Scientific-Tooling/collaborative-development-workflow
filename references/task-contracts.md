@@ -84,8 +84,9 @@ inferred from silence. `REVIEW_UNAVAILABLE` means no usable independent reviewer
 result was delivered; `REVIEW_BLOCKED` means a result exists but its evidence cannot
 be validated. Both are non-accepting in portable mode.
 
-Runtime event shapes and lifecycle semantics belong to
-[`review-runtime.md`](review-runtime.md). The machine records are
+Runtime event shapes and portable lifecycle semantics belong to
+[`review-runtime.md`](review-runtime.md); strict binding and timing semantics
+belong to [`review-runtime-strict.md`](review-runtime-strict.md). The machine records are
 `records.runtime_completion_event`, `records.runtime_terminal_event`,
 `records.runtime_stop_event`, and `records.runtime_event_sequence` in
 `contracts-v2.json`; a model-written completion string is never an event.
@@ -143,8 +144,12 @@ The command interface is:
 ```bash
 python3 scripts/contract_tool.py validate --kind impact_scope scope.json
 python3 scripts/contract_tool.py digest --kind role_result result.json
+python3 scripts/contract_tool.py describe --path records.role_result.fields.status
+python3 scripts/contract_tool.py describe --path modes.required_capabilities.portable
 ```
 
+`describe --path` resolves a dotted path against the effective expanded ContractV2
+and emits only that subtree, which is preferable to reading the whole JSON file.
 Exit `0` means valid; exit `2` means invalid input or contract. Diagnostics are
 machine-readable JSON.
 

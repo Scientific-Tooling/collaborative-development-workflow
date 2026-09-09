@@ -301,21 +301,62 @@ class ContractToolTests(unittest.TestCase):
         self.assertEqual(section_result.returncode, 0, section_result.stderr)
         self.assertEqual(json.loads(section_result.stdout), contract_tool.CONTRACT["modes"])
 
-    def test_runtime_reference_points_to_contract_without_schema_duplication(self) -> None:
+        path_result = subprocess.run(
+            [
+                sys.executable,
+                str(repository / "scripts" / "contract_tool.py"),
+                "describe",
+                "--path",
+                "records.role_result.fields.status",
+            ],
+            cwd=repository,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        self.assertEqual(path_result.returncode, 0, path_result.stderr)
+        self.assertEqual(
+            json.loads(path_result.stdout),
+            contract_tool.CONTRACT["records"]["role_result"]["fields"]["status"],
+        )
+
+        invalid_path_result = subprocess.run(
+            [
+                sys.executable,
+                str(repository / "scripts" / "contract_tool.py"),
+                "describe",
+                "--path",
+                "records.role_result.fields.missing",
+            ],
+            cwd=repository,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        self.assertEqual(invalid_path_result.returncode, 2)
+        self.assertIn("unknown ContractV2 path", json.loads(invalid_path_result.stdout)["errors"][0])
+
+    def test_runtime_references_keep_portable_and_strict_details_separate(self) -> None:
         repository = Path(__file__).resolve().parents[1]
         runtime = (repository / "references" / "review-runtime.md").read_text(encoding="utf-8")
         self.assertLessEqual(len(runtime.encode("utf-8")), 7500)
         for path in (
             "modes.required_capabilities.portable",
+            "artifact_contracts.snapshot_manifest",
+        ):
+            self.assertIn(path, runtime)
+        self.assertNotIn("modes.required_capabilities.strict_additional", runtime)
+        strict_runtime = (repository / "references" / "review-runtime-strict.md").read_text(encoding="utf-8")
+        for path in (
             "modes.required_capabilities.strict_additional",
             "records.runtime_completion_event",
             "records.runtime_terminal_event",
             "records.runtime_stop_event",
-            "artifact_contracts.snapshot_manifest",
+            "records.runtime_event_sequence",
         ):
-            self.assertIn(path, runtime)
-        self.assertNotIn("EVENT_ID, RUN_ID, TASK_ID", runtime)
-        self.assertNotIn("STATUS: failed | cancelled | errored", runtime)
+            self.assertIn(path, strict_runtime)
 
     def test_unknown_fields_are_rejected(self) -> None:
         record = self.impact_scope()
