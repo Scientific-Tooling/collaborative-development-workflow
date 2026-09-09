@@ -1,106 +1,145 @@
 # Collaborative Development Workflow
 
-A Codex skill for running scoped, multi-agent software changes with explicit
-planning, single-writer boundaries, immutable review snapshots, fail-closed
-review recovery, focused validation, and local commits.
+A Codex skill for scoped software changes with explicit capability preflight,
+single-writer implementation, frozen-snapshot independent review, bounded
+findings/fix rounds, final validation, and an optional explicitly requested local
+commit.
 
-The skill is designed for coding tasks where delegated agents can improve
-confidence, but where the parent agent must retain responsibility for scope,
-integration, repository-wide validation, acceptance, and the final commit.
+## V2 operating model
+
+| Mode | Default? | Required runtime surface | Acceptance |
+| --- | --- | --- | --- |
+| `portable` | yes | identifiable read-only subagent, terminal result delivery, shared snapshot access | `ACCEPTED_PORTABLE` only with usable independent review, matching identities, and passing validation |
+| `strict` | no; explicit request only | portable surface plus authoritative binding, CAS, monotonic timing, completion/stop events, exact targets, and immutable proofs | `ACCEPTED_STRICT` only with every strict proof |
+
+Strict mode fails before mutation when its capability record is missing; it is never
+silently downgraded. If portable review is unavailable, the main agent may still
+run its own validation, but the result is `NOT_ACCEPTED` with
+`REVIEW_UNAVAILABLE` and no commit. If review evidence exists but cannot be
+validated, use `REVIEW_BLOCKED`.
+
+All public statuses, closed record shapes, limits, path rules, and hash domains are
+defined in [`references/contracts-v2.json`](references/contracts-v2.json). Older V1
+text is legacy and unsupported by the bundled helpers.
 
 ## What it provides
 
-- Impact-scoped planning and task contracts
-- Bounded planner, implementer, verifier, and reviewer prompts
-- One-writer workspace discipline and isolated-worktree guidance
-- Content-addressed, read-only review snapshots
-- Runtime-bound reviewer reports and coverage proofs
-- Bounded context rollover and fresh-task handoffs
-- Explicit handling for timeouts, silence, cancellation, partial work, and
-  replacement reviewers
-- Fail-closed acceptance when independent review evidence is unavailable
-- Progressive disclosure through focused reference documents
+- capability preflight before editing or delegation;
+- bounded planner, researcher, implementer, verifier, and reviewer prompts;
+- one-writer workspace and isolated-worktree discipline;
+- deterministic, scoped, tamper-evident review snapshots;
+- portable review evidence and strict-only runtime binding/recovery rules;
+- bounded context rollover and independent-task handoffs;
+- explicit handling for findings, unavailable review, cancellation, and quarantine;
+- fail-closed acceptance when independent review evidence is unavailable; and
+- an explicit-only local commit gate that refuses baseline staged changes.
 
-## Install for Codex
+## Install into Codex
 
-Clone the skill directly into the Codex skills directory:
+For a source checkout (recommended while developing the skill):
 
 ```bash
 mkdir -p ~/.codex/skills
-git clone https://github.com/Scientific-Tooling/collaborative-development-workflow.git \\
+git clone https://github.com/Scientific-Tooling/collaborative-development-workflow.git \
   ~/.codex/skills/collaborative-development-workflow
 ```
 
-If the directory already exists, update it with:
+For an existing source checkout, update it with `git pull --ff-only` only when that
+checkout is the intended installation copy. A copied installation is also valid:
+copy the complete skill directory, including `references/`, `scripts/`, `tests/`,
+and `agents/`, into a filesystem-discovered skills directory. Do not edit a copied
+installed directory when the authoritative source checkout is elsewhere; make the
+change in the source checkout and copy/sync it as a separate authorized operation.
 
-```bash
-git -C ~/.codex/skills/collaborative-development-workflow pull --ff-only
-```
-
-Then invoke it explicitly with:
+Invoke explicitly:
 
 ```text
 $collaborative-development-workflow
 ```
 
-The skill may also be copied into another filesystem-discovered skills
-directory supported by the agent runtime.
-
-## Runtime expectations
-
-The workflow is instruction-level guidance. Its strongest guarantees depend on
-runtime features for isolated workspaces, foreground agent waits, immutable
-artifact access, runtime identity binding, cancellation/stop confirmation, and
-compare-and-set task state. A runtime that cannot provide those anchors should
-report the affected delegation as blocked instead of treating silence or a
-passing test suite as independent review approval.
-
-The default configuration is conservative: delegated checks stay focused, the
-main agent owns full validation, and commits are local unless the user
-explicitly authorizes a push or other external mutation.
+The skill does not imply a commit, push, publication, deployment, installation, or
+other external mutation.
 
 ## Repository layout
 
 ```text
-SKILL.md                         Entry point and routing rules
-agents/openai.yaml               Codex UI metadata
-references/task-contracts.md     Typed assignments and result envelopes
-references/review-runtime.md     Binding, timing, identity, and CAS rules
-references/review-recovery.md    Timeout, cancellation, and replacement rules
-references/workflow.md           End-to-end lifecycle and acceptance gates
-references/agent-templates.md    Delegated role prompt templates
-references/failure-and-reporting.md
-references/coordination-protocol.md
-references/context-rollover.md       Context-limit handoff and fresh-task protocol
+SKILL.md                         concise router and always-active gates
+agents/openai.yaml               Codex UI metadata and explicit-only policy
+references/contracts-v2.json     machine-readable ContractV2 source of truth
+references/task-contracts.md     readable task, result, and digest rules
+references/review-runtime.md     portable snapshots and strict runtime mechanics
+references/review-recovery.md    findings loop and strict recovery/replacement
+references/workflow.md            end-to-end lifecycle and commit gate
+references/agent-templates.md    bounded delegated-role prompts
+references/coordination-protocol.md shared/portable coordination rules
+references/context-rollover.md   temporary handoff and fresh-task protocol
+references/failure-and-reporting.md failure and user handoff rules
+scripts/contract_tool.py          dependency-free record validator/digester
+scripts/snapshot_tool.py          dependency-free snapshot creator/verifier
+tests/                            standard-library conformance tests
+requirements-dev.txt              optional PyYAML for the official skill validator
 ```
 
-Detailed references are loaded only when their operation requires them, keeping
-ordinary skill invocations small while retaining the full coordination protocol
-for high-risk cases.
+## Helper commands
 
-Context rollover uses a bounded, parent-owned manifest. Runtime task identity,
-ownership, locks, active waits, stop confirmation, review proof, and acceptance
-remain authoritative outside that temporary artifact.
-
-## Validate locally
-
-From this repository's parent directory, run the bundled Codex skill validator:
+Validate or digest a closed ContractV2 record:
 
 ```bash
+python3 scripts/contract_tool.py validate --kind impact_scope scope.json
+python3 scripts/contract_tool.py digest --kind context_handoff handoff.json
+python3 scripts/contract_tool.py describe --kind role_result
+python3 scripts/contract_tool.py describe --section modes
+```
+
+`describe` returns the expanded effective record or the requested contract
+section, so a caller can inspect one machine shape without loading the whole
+ContractV2 source.
+
+Create and check a review artifact outside the repository:
+
+```bash
+python3 scripts/snapshot_tool.py create /path/to/repository \
+  --scope scope.json --output /tmp/cdw-review-task
+python3 scripts/snapshot_tool.py verify /tmp/cdw-review-task --scope scope.json
+python3 scripts/snapshot_tool.py compare /path/to/repository /tmp/cdw-review-task \
+  --scope scope.json
+```
+
+Contract helper exit `0` means valid and `2` means invalid input/contract.
+Snapshot helper exit `0` means valid/matching, `1` means an identity mismatch, and
+`2` means invalid input/artifact. Snapshot manifests record Git identity, scope,
+present/deleted entries, modes, bytes, hashes, and symlink targets without following
+symlinks. Snapshot creation and verification require POSIX descriptor-relative
+`dir_fd`/`O_NOFOLLOW` support; on a host without that surface the helper fails
+closed instead of falling back to racy pathname traversal.
+
+## Development checks
+
+The helpers run on Python 3.10–3.13 using only the standard library:
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+The official Codex skill validator is external to this repository. Install its
+development dependency when needed:
+
+```bash
+python3 -m pip install -r requirements-dev.txt
 python3 /path/to/codex/skills/.system/skill-creator/scripts/quick_validate.py \
   /path/to/collaborative-development-workflow
 ```
 
-The validator checks frontmatter, naming, and unfinished scaffolding. It does
-not replace behavioral review of the workflow or validation of a host runtime's
-agent lifecycle semantics.
+The validator checks frontmatter, naming, and unfinished scaffolding; it does not
+prove a host runtime's agent lifecycle semantics. Run YAML parsing and relative-link
+checks in addition to the unit tests and validator.
 
-## Scope and safety
+## Safety boundary
 
-This is an unofficial, runtime-oriented workflow layer. It does not replace a
-repository's own instructions, test suite, access controls, or deployment
-process. It must not be used to infer user authorization for publishing,
-deploying, or changing external services.
+This is an unofficial runtime-oriented workflow layer. It does not replace a
+repository's own instructions, test suite, access controls, or deployment process.
+It must not infer authorization for publishing, deploying, changing external
+services, or pushing a branch.
 
 ## License
 

@@ -1,0 +1,691 @@
+{
+  "contract": "collaborative-development-workflow",
+  "version": "contract-v2",
+  "canonicalization": {
+    "encoding": "UTF-8",
+    "json": "compact JSON with lexicographically sorted object keys, ensure_ascii=false, and no duplicate keys or non-finite numbers",
+    "paths": "repository-relative POSIX paths; dot components are removed, parent traversal and absolute paths are rejected",
+    "hash_algorithm": "SHA-256",
+    "domains": {
+      "record": "cdw-contract-v2\u0000",
+      "snapshot_content": "cdw-snapshot-content-v2\u0000",
+      "snapshot_manifest": "cdw-snapshot-manifest-v2\u0000",
+      "snapshot_entry": "cdw-snapshot-entry-v2\u0000"
+    }
+  },
+  "sentinels": [
+    "NONE",
+    "UNSET",
+    "UNKNOWN",
+    "NOT_RUN",
+    "UNASSIGNED"
+  ],
+  "limits": {
+    "token_bytes": 128,
+    "short_token_bytes": 64,
+    "text_bytes": 4096,
+    "summary_bytes": 1024,
+    "path_bytes": 512,
+    "command_bytes": 1024,
+    "scope_entries": 128,
+    "covered_scope_entries": 64,
+    "checks": 32,
+    "findings": 64,
+    "risks": 16,
+    "decisions": 16,
+    "plan_steps": 32,
+    "artifacts": 32,
+    "active_work": 32,
+    "review_rounds": 2,
+    "symlink_target_bytes": 4096,
+    "json_bytes": 4194304,
+    "json_depth": 64,
+    "snapshot_depth": 64,
+    "runtime_events": 64
+  },
+  "statuses": {
+    "common_exceptional": [
+      "NEEDS_INPUT",
+      "NEEDS_USER_DECISION",
+      "PARTIAL",
+      "BLOCKED",
+      "FAILED",
+      "CANCELLED"
+    ],
+    "role_success": {
+      "researcher": "RESEARCH_READY",
+      "planner": "PLAN_READY",
+      "implementer": "CHECKPOINT_READY",
+      "verifier": "VERIFICATION_READY"
+    },
+    "review": [
+      "CLEAN",
+      "FINDINGS",
+      "REVIEW_UNAVAILABLE",
+      "REVIEW_BLOCKED"
+    ],
+    "roles": [
+      "researcher",
+      "planner",
+      "implementer",
+      "reviewer",
+      "verifier"
+    ],
+    "review_findings": [
+      "OPEN",
+      "ADDRESSED",
+      "WONT_FIX_WITH_AUTHORIZATION"
+    ],
+    "check": [
+      "PASSED",
+      "FAILED",
+      "NOT_RUN",
+      "SKIPPED"
+    ],
+    "workflow_outcomes": [
+      "ACCEPTED_PORTABLE",
+      "ACCEPTED_STRICT",
+      "NOT_ACCEPTED"
+    ],
+    "validation": [
+      "PASSED",
+      "FAILED",
+      "NOT_RUN"
+    ],
+    "ledger_states": [
+      "PENDING",
+      "READY",
+      "CLAIMED",
+      "RUNNING",
+      "COMPLETED",
+      "VERIFIED",
+      "INTEGRATION_PENDING",
+      "INTEGRATED",
+      "ACCEPTED",
+      "NEEDS_INPUT",
+      "PARTIAL",
+      "BLOCKED",
+      "FAILED",
+      "CANCELLED",
+      "QUARANTINED"
+    ],
+    "risk_statuses": [
+      "OPEN",
+      "MITIGATED",
+      "ACCEPTED"
+    ],
+    "actionable_finding_statuses": ["OPEN", "WONT_FIX_WITH_AUTHORIZATION"],
+    "decision_statuses": ["pending", "accepted", "rejected"],
+    "plan_step_statuses": ["planned", "in_progress", "done", "blocked"],
+    "acceptance_statuses": ["pending", "met", "blocked"],
+    "finding_severities": ["BLOCKER", "HIGH", "MEDIUM", "LOW", "INFO"],
+    "checkpoint_statuses": [
+      "PLAN_READY",
+      "CHECKPOINT_READY",
+      "VERIFICATION_READY",
+      "PARTIAL",
+      "INTEGRATION_PENDING",
+      "INTEGRATED"
+    ],
+    "not_accepted_reasons": [
+      "REVIEW_UNAVAILABLE",
+      "REVIEW_BLOCKED",
+      "VALIDATION_FAILED",
+      "IDENTITY_MISMATCH",
+      "USER_DECISION_REQUIRED",
+      "STRICT_CAPABILITY_MISSING",
+      "SCOPE_CHANGED",
+      "QUARANTINED_RESULT"
+    ],
+    "not_accepted_reason_rules": {
+      "REVIEW_UNAVAILABLE": {
+        "review_status": ["REVIEW_UNAVAILABLE"]
+      },
+      "REVIEW_BLOCKED": {
+        "review_status": ["REVIEW_BLOCKED"]
+      },
+      "VALIDATION_FAILED": {
+        "validation_status": ["FAILED"]
+      },
+      "IDENTITY_MISMATCH": {
+        "review_status": ["REVIEW_BLOCKED", "REVIEW_UNAVAILABLE"]
+      },
+      "USER_DECISION_REQUIRED": {},
+      "STRICT_CAPABILITY_MISSING": {
+        "mode": ["strict"],
+        "review_status": ["REVIEW_BLOCKED", "REVIEW_UNAVAILABLE"]
+      },
+      "SCOPE_CHANGED": {
+        "review_status": ["REVIEW_BLOCKED", "REVIEW_UNAVAILABLE"]
+      },
+      "QUARANTINED_RESULT": {
+        "review_status": ["REVIEW_BLOCKED", "REVIEW_UNAVAILABLE"]
+      }
+    }
+  },
+  "runtime_events": {
+    "record_kinds": {
+      "RUNTIME_COMPLETION_EVENT": "runtime_completion_event",
+      "RUNTIME_TERMINAL_EVENT": "runtime_terminal_event",
+      "RUNTIME_STOP_EVENT": "runtime_stop_event"
+    },
+    "clock_sources": ["monotonic"],
+    "completion_status": ["completed"],
+    "terminal_status": ["failed", "cancelled", "errored", "shutdown", "spawn_failed"],
+    "stop_status": ["stopped"],
+    "child_started": ["yes", "no"],
+    "stop_confirmed": ["yes", "not_applicable"]
+  },
+  "modes": {
+    "values": [
+      "portable",
+      "strict"
+    ],
+    "required_capabilities": {
+      "portable": [
+        "read_only_subagent_identity",
+        "terminal_result_delivery",
+        "shared_snapshot_access"
+      ],
+      "strict_additional": [
+      "atomic_spawn_binding",
+      "cas_state",
+      "verified_monotonic_timing",
+      "runtime_completion_events",
+      "exact_stop_targets",
+      "immutable_artifact_proofs"
+      ]
+    }
+  },
+  "artifact_contracts": {
+    "snapshot_manifest": {
+      "version": "snapshot-manifest-v2",
+      "fields": [
+        "version",
+        "base_git_identity",
+        "scope_paths",
+        "scope_digest",
+        "entries",
+        "baseline_entries",
+        "content_identity",
+        "manifest_identity"
+      ],
+      "git_identity_fields": [
+        "head",
+        "branch",
+        "index_tree",
+        "worktree_status_digest"
+      ],
+      "entry": {
+        "fields": [
+          "path",
+          "status",
+          "type",
+          "mode",
+          "size",
+          "content_hash",
+          "symlink_target",
+          "artifact_path"
+        ],
+        "statuses": ["present", "deleted"],
+        "types": ["file", "directory", "symlink", "deleted"],
+        "artifact_prefixes": {
+          "files": "files",
+          "baseline": "baseline"
+        }
+      },
+      "baseline_types": ["file", "symlink"],
+      "top_level": ["manifest.json", "files", "baseline"],
+      "limits": {
+        "max_entries": {"limit_ref": "limits.scope_entries", "multiplier": 64},
+        "snapshot_depth_ref": "limits.snapshot_depth",
+        "symlink_target_bytes_ref": "limits.symlink_target_bytes",
+        "manifest_bytes_ref": "limits.json_bytes"
+      }
+    }
+  },
+  "field_sets": {
+    "runtime_event_identity": {
+      "required": [
+        "event_id",
+        "run_id",
+        "task_id",
+        "invocation_id",
+        "attempt",
+        "agent_id",
+        "agent_channel",
+        "transport_invocation_association",
+        "runtime_target",
+        "binding_token",
+        "clock_source"
+      ],
+      "fields": {
+        "event_id": {"type": "identifier"},
+        "run_id": {"type": "identifier_or_none"},
+        "task_id": {"type": "identifier_or_none"},
+        "invocation_id": {"type": "identifier_or_none"},
+        "attempt": {"type": "positive_integer"},
+        "agent_id": {"type": "identifier_or_none"},
+        "agent_channel": {"type": "identifier_or_none"},
+        "transport_invocation_association": {"type": "identifier_or_none"},
+        "runtime_target": {"type": "text", "max_bytes": 512},
+        "binding_token": {"type": "identifier_or_none"},
+        "clock_source": {"type": "enum_ref", "ref": "runtime_events.clock_sources"}
+      }
+    }
+  },
+  "mixins": {
+    "runtime_event": {
+      "field_sets": ["runtime_event_identity"]
+    }
+  },
+  "nested_records": {
+    "check": {
+      "required": ["id", "status", "summary"],
+      "fields": {
+        "id": {"type": "token", "max_bytes_ref": "limits.short_token_bytes"},
+        "status": {"type": "enum_ref", "ref": "statuses.check"},
+        "summary": {"type": "text", "max_bytes_ref": "limits.summary_bytes"}
+      }
+    },
+    "risk": {
+      "required": ["id", "status", "summary"],
+      "fields": {
+        "id": {"type": "token", "max_bytes_ref": "limits.short_token_bytes"},
+        "status": {"type": "enum_ref", "ref": "statuses.risk_statuses"},
+        "summary": {"type": "text", "max_bytes_ref": "limits.summary_bytes"}
+      }
+    },
+    "finding": {
+      "required": ["id", "severity", "path", "line", "summary", "evidence", "impact", "fix", "status"],
+      "fields": {
+        "id": {"type": "token", "max_bytes_ref": "limits.short_token_bytes"},
+        "severity": {"type": "enum_ref", "ref": "statuses.finding_severities"},
+        "path": {"type": "path"},
+        "line": {"type": "positive_integer"},
+        "summary": {"type": "text", "max_bytes_ref": "limits.summary_bytes"},
+        "evidence": {"type": "text", "max_bytes_ref": "limits.summary_bytes"},
+        "impact": {"type": "text", "max_bytes_ref": "limits.summary_bytes"},
+        "fix": {"type": "text", "max_bytes_ref": "limits.summary_bytes"},
+        "status": {"type": "enum_ref", "ref": "statuses.review_findings"}
+      }
+    },
+    "plan_step": {
+      "required": ["step_id", "status", "summary"],
+      "fields": {
+        "step_id": {"type": "token", "max_bytes_ref": "limits.short_token_bytes"},
+        "status": {"type": "enum_ref", "ref": "statuses.plan_step_statuses"},
+        "summary": {"type": "text", "max_bytes_ref": "limits.summary_bytes"}
+      }
+    },
+    "acceptance_criterion": {
+      "required": ["criterion_id", "status", "summary"],
+      "fields": {
+        "criterion_id": {"type": "token", "max_bytes_ref": "limits.short_token_bytes"},
+        "status": {"type": "enum_ref", "ref": "statuses.acceptance_statuses"},
+        "summary": {"type": "text", "max_bytes_ref": "limits.summary_bytes"}
+      }
+    },
+    "baseline": {
+      "required": ["branch", "head", "status_digest"],
+      "fields": {
+        "branch": {"type": "text", "max_bytes": 256},
+        "head": {"type": "identifier_or_none"},
+        "status_digest": {"type": "identifier_or_none"}
+      }
+    },
+    "checkpoint": {
+      "required": ["checkpoint_id", "status", "completed_milestone", "changed_paths", "content_identity", "next_action"],
+      "fields": {
+        "checkpoint_id": {"type": "token", "max_bytes_ref": "limits.token_bytes"},
+        "status": {"type": "enum_ref", "ref": "statuses.checkpoint_statuses"},
+        "completed_milestone": {"type": "text", "max_bytes": 512},
+        "changed_paths": {"type": "path_list", "max_items": 128, "set_like": true},
+        "content_identity": {"type": "identifier_or_none"},
+        "next_action": {"type": "text", "max_bytes": 512}
+      }
+    },
+    "artifact": {
+      "required": ["kind", "artifact_id", "artifact_path", "content_identity"],
+      "fields": {
+        "kind": {"type": "token", "max_bytes": 64},
+        "artifact_id": {"type": "token", "max_bytes_ref": "limits.token_bytes"},
+        "artifact_path": {"type": "text", "max_bytes": 512},
+        "content_identity": {"type": "identifier_or_none"}
+      }
+    },
+    "active_work": {
+      "required": ["run_id", "task_id", "attempt", "invocation_id", "role", "state", "lock_scope", "runtime_terminal_event_id"],
+      "fields": {
+        "run_id": {"type": "token", "max_bytes_ref": "limits.token_bytes"},
+        "task_id": {"type": "token", "max_bytes_ref": "limits.token_bytes"},
+        "attempt": {"type": "positive_integer"},
+        "invocation_id": {"type": "token", "max_bytes_ref": "limits.token_bytes"},
+        "role": {"type": "enum_ref", "ref": "statuses.roles"},
+        "state": {"type": "enum_ref", "ref": "statuses.ledger_states"},
+        "lock_scope": {"type": "path_list", "max_items": 128, "set_like": true},
+        "runtime_terminal_event_id": {"type": "identifier_or_none"}
+      }
+    },
+    "decision": {
+      "required": ["decision_id", "status", "summary"],
+      "fields": {
+        "decision_id": {"type": "token", "max_bytes_ref": "limits.short_token_bytes"},
+        "status": {"type": "enum_ref", "ref": "statuses.decision_statuses"},
+        "summary": {"type": "text", "max_bytes_ref": "limits.summary_bytes"}
+      }
+    },
+    "model_profile": {
+      "required": [],
+      "min_properties": 1,
+      "fields": {
+        "model": {"type": "text", "max_bytes_ref": "limits.token_bytes"},
+        "effort": {"type": "text", "max_bytes_ref": "limits.short_token_bytes"}
+      }
+    },
+    "role_payload": {
+      "required": [],
+      "min_properties": 1,
+      "fields": {
+        "planning_role": {"type": "text", "max_bytes_ref": "limits.summary_bytes"},
+        "plan_or_critique": {"type": "text", "max_bytes_ref": "limits.summary_bytes"},
+        "material_decisions": {"type": "bounded_text_or_list", "max_items": 16, "max_bytes_ref": "limits.summary_bytes"},
+        "milestones": {"type": "bounded_text_or_list", "max_items": 16, "max_bytes_ref": "limits.summary_bytes"},
+        "prerequisites": {"type": "bounded_text_or_list", "max_items": 16, "max_bytes_ref": "limits.summary_bytes"},
+        "write_scope": {"type": "bounded_text_or_list", "max_items": 16, "max_bytes_ref": "limits.summary_bytes"},
+        "integration_order": {"type": "bounded_text_or_list", "max_items": 16, "max_bytes_ref": "limits.summary_bytes"},
+        "mode": {"type": "enum", "values": ["portable", "strict"]},
+        "exclusions": {"type": "bounded_text_or_list", "max_items": 16, "max_bytes_ref": "limits.summary_bytes"},
+        "focused_checks": {"type": "bounded_text_or_list", "max_items": 16, "max_bytes_ref": "limits.summary_bytes"},
+        "risks": {"type": "bounded_text_or_list", "max_items": 16, "max_bytes_ref": "limits.summary_bytes"},
+        "research_scope": {"type": "text", "max_bytes_ref": "limits.summary_bytes"},
+        "evidence": {"type": "bounded_text_or_list", "max_items": 16, "max_bytes_ref": "limits.summary_bytes"},
+        "open_questions": {"type": "bounded_text_or_list", "max_items": 16, "max_bytes_ref": "limits.summary_bytes"},
+        "recommendation": {"type": "text", "max_bytes_ref": "limits.summary_bytes"},
+        "milestone": {"type": "text", "max_bytes_ref": "limits.summary_bytes"},
+        "remaining_risks": {"type": "bounded_text_or_list", "max_items": 16, "max_bytes_ref": "limits.summary_bytes"},
+        "next_milestone": {"type": "text", "max_bytes_ref": "limits.summary_bytes"},
+        "verification_results": {"type": "bounded_text_or_list", "max_items": 16, "max_bytes_ref": "limits.summary_bytes"},
+        "reproducible_failures": {"type": "bounded_text_or_list", "max_items": 16, "max_bytes_ref": "limits.summary_bytes"}
+      }
+    }
+  },
+  "records": {
+    "task_spec": {
+      "required": [
+        "version",
+        "task_id",
+        "parent_task_id",
+        "run_id",
+        "invocation_id",
+        "binding_token",
+        "binding_mode",
+        "role",
+        "mode",
+        "objective",
+        "depends_on",
+        "acceptance_criteria",
+        "read_scope",
+        "write_scope",
+        "impact_scope",
+        "base_snapshot",
+        "base_content_identity",
+        "focused_checks",
+        "execution",
+        "isolation",
+        "budget",
+        "resumable",
+        "model_profile",
+        "full_suite_owner",
+        "snapshot_id",
+        "artifact_path",
+        "artifact_access_proof",
+        "review_coverage_proof"
+      ],
+      "fields": {
+        "version": {"type": "const", "value": "task-spec-v2"},
+        "task_id": {"type": "identifier"},
+        "parent_task_id": {"type": "identifier_or_none"},
+        "run_id": {"type": "identifier"},
+        "invocation_id": {"type": "identifier_or_none"},
+        "binding_token": {"type": "identifier_or_none"},
+        "binding_mode": {"type": "enum", "values": ["portable", "strict"]},
+        "role": {"type": "enum_ref", "ref": "statuses.roles"},
+        "mode": {"type": "enum", "values": ["portable", "strict"]},
+        "objective": {"type": "text", "max_bytes": 4096},
+        "depends_on": {"type": "token_list", "max_items": 32, "set_like": true},
+        "acceptance_criteria": {"type": "acceptance_list", "max_items": 32},
+        "read_scope": {"type": "path_list", "max_items": 128, "set_like": true},
+        "write_scope": {"type": "path_list", "max_items": 128, "set_like": true},
+        "impact_scope": {"type": "record", "kind": "impact_scope"},
+        "base_snapshot": {"type": "identifier_or_none"},
+        "base_content_identity": {"type": "identifier_or_none"},
+        "focused_checks": {"type": "focused_check_list", "max_items": 32},
+        "execution": {"type": "text", "max_bytes": 1024},
+        "isolation": {"type": "text", "max_bytes": 1024},
+        "budget": {"type": "text", "max_bytes": 1024},
+        "resumable": {"type": "boolean"},
+        "model_profile": {"type": "model_profile"},
+        "full_suite_owner": {"type": "const", "value": "main"},
+        "snapshot_id": {"type": "identifier_or_none"},
+        "artifact_path": {"type": "text_or_none", "max_bytes": 512},
+        "artifact_access_proof": {"type": "identifier_or_none"},
+        "review_coverage_proof": {"type": "identifier_or_none"}
+      }
+    },
+    "impact_scope": {
+      "required": [
+        "version",
+        "changed_paths",
+        "direct_callers",
+        "direct_consumers",
+        "mapped_tests_or_configuration",
+        "explicit_exclusions"
+      ],
+      "fields": {
+        "version": {"type": "const", "value": "impact-scope-v2"},
+        "changed_paths": {"type": "path_list", "max_items": 128, "set_like": true},
+        "direct_callers": {"type": "reference_list", "max_items": 128, "set_like": true},
+        "direct_consumers": {"type": "reference_list", "max_items": 128, "set_like": true},
+        "mapped_tests_or_configuration": {"type": "reference_list", "max_items": 128, "set_like": true},
+        "explicit_exclusions": {"type": "reference_list", "max_items": 128, "set_like": true}
+      }
+    },
+    "focused_check": {
+      "required": ["version", "id", "command_or_assertion", "covered_scope", "required"],
+      "fields": {
+        "version": {"type": "const", "value": "focused-check-v2"},
+        "id": {"type": "token", "max_bytes": 128},
+        "command_or_assertion": {"type": "text", "max_bytes": 1024},
+        "covered_scope": {"type": "reference_list", "max_items": 64, "set_like": true},
+        "required": {"type": "boolean"}
+      }
+    },
+    "capability_preflight": {
+      "required": ["version", "mode", "result", "capabilities", "missing", "authority"],
+      "fields": {
+        "version": {"type": "const", "value": "capability-preflight-v2"},
+        "mode": {"type": "enum", "values": ["portable", "strict"]},
+        "result": {"type": "enum", "values": ["PORTABLE_READY", "STRICT_READY", "NOT_READY"]},
+        "capabilities": {"type": "capability_map"},
+        "missing": {"type": "token_list", "max_items": 16, "set_like": true},
+        "authority": {"type": "enum", "values": ["observed_tool_surface", "authoritative_runtime_record"]}
+      }
+    },
+    "role_result": {
+      "required": [
+        "version",
+        "role",
+        "status",
+        "summary",
+        "completed_scope",
+        "changed_paths",
+        "checks",
+        "risks",
+        "blocker_or_input",
+        "attention_required",
+        "next_action"
+      ],
+      "fields": {
+        "version": {"type": "const", "value": "role-result-v2"},
+        "role": {"type": "enum_ref", "ref": "statuses.roles"},
+        "mode": {"type": "enum", "values": ["portable", "strict"]},
+        "status": {"type": "role_status"},
+        "summary": {"type": "text", "max_bytes": 1024},
+        "completed_scope": {"type": "reference_list", "max_items": 128, "set_like": true},
+        "changed_paths": {"type": "path_list", "max_items": 128, "set_like": true},
+        "checks": {"type": "check_list", "max_items": 32},
+        "risks": {"type": "risk_list", "max_items": 16},
+        "blocker_or_input": {"type": "text_or_none", "max_bytes": 1024},
+        "attention_required": {"type": "text_list", "max_items": 16, "max_bytes": 1024},
+        "next_action": {"type": "text_or_none", "max_bytes": 1024},
+        "role_payload": {"type": "role_payload"},
+        "run_id": {"type": "identifier"},
+        "task_id": {"type": "identifier"},
+        "attempt": {"type": "positive_integer"},
+        "invocation_id": {"type": "identifier"},
+        "report_id": {"type": "identifier"},
+        "runtime_terminal_event_id": {"type": "identifier_or_none"},
+        "agent_id": {"type": "identifier_or_none"},
+        "agent_channel": {"type": "identifier_or_none"},
+        "transport_invocation_association": {"type": "identifier_or_none"},
+        "base_snapshot": {"type": "identifier_or_none"},
+        "base_content_identity": {"type": "identifier_or_none"},
+        "content_identity": {"type": "identifier_or_none"},
+        "artifact_access_proof": {"type": "identifier_or_none"},
+        "review_coverage_proof": {"type": "identifier_or_none"},
+        "reviewed_paths": {"type": "path_list", "max_items": 128, "set_like": true},
+        "findings": {"type": "finding_list", "max_items": 64},
+        "model_profile": {"type": "model_profile"}
+      }
+    },
+    "workflow_outcome": {
+      "required": ["version", "mode", "outcome", "accepted", "review_status", "reason", "validation_status", "commit_requested"],
+      "fields": {
+        "version": {"type": "const", "value": "workflow-outcome-v2"},
+        "mode": {"type": "enum", "values": ["portable", "strict"]},
+        "outcome": {"type": "enum_ref", "ref": "statuses.workflow_outcomes"},
+        "accepted": {"type": "boolean"},
+        "review_status": {"type": "enum_ref", "ref": "statuses.review"},
+        "reason": {"type": "enum_ref_or_none", "ref": "statuses.not_accepted_reasons"},
+        "validation_status": {"type": "enum_ref", "ref": "statuses.validation"},
+        "commit_requested": {"type": "boolean"},
+        "snapshot_id": {"type": "identifier_or_none"},
+        "content_identity": {"type": "identifier_or_none"},
+        "commit_id": {"type": "identifier_or_none"}
+      }
+    },
+    "runtime_completion_event": {
+      "mixins": ["runtime_event"],
+      "required": [
+        "version",
+        "event_type",
+        "status",
+        "result_delivery_confirmed",
+        "terminal_at",
+        "terminal_reason"
+      ],
+      "fields": {
+        "version": {"type": "const", "value": "runtime-completion-event-v2"},
+        "event_type": {"type": "const", "value": "RUNTIME_COMPLETION_EVENT"},
+        "status": {"type": "enum_ref", "ref": "runtime_events.completion_status"},
+        "result_delivery_confirmed": {"type": "enum", "values": ["yes"]},
+        "terminal_at": {"type": "monotonic_timestamp"},
+        "terminal_reason": {"type": "text", "max_bytes": 1024}
+      }
+    },
+    "runtime_terminal_event": {
+      "mixins": ["runtime_event"],
+      "required": [
+        "version",
+        "event_type",
+        "status",
+        "child_started",
+        "stop_confirmed",
+        "cancel_confirmed_at",
+        "terminal_at",
+        "terminal_reason"
+      ],
+      "fields": {
+        "version": {"type": "const", "value": "runtime-terminal-event-v2"},
+        "event_type": {"type": "const", "value": "RUNTIME_TERMINAL_EVENT"},
+        "status": {"type": "enum_ref", "ref": "runtime_events.terminal_status"},
+        "child_started": {"type": "enum_ref", "ref": "runtime_events.child_started"},
+        "stop_confirmed": {"type": "enum_ref", "ref": "runtime_events.stop_confirmed"},
+        "cancel_confirmed_at": {"type": "monotonic_timestamp_or_none"},
+        "terminal_at": {"type": "monotonic_timestamp"},
+        "terminal_reason": {"type": "text", "max_bytes": 1024}
+      }
+    },
+    "runtime_stop_event": {
+      "mixins": ["runtime_event"],
+      "required": [
+        "version",
+        "event_type",
+        "status",
+        "stop_confirmed",
+        "stopped_at",
+        "stop_reason"
+      ],
+      "fields": {
+        "version": {"type": "const", "value": "runtime-stop-event-v2"},
+        "event_type": {"type": "const", "value": "RUNTIME_STOP_EVENT"},
+        "status": {"type": "enum_ref", "ref": "runtime_events.stop_status"},
+        "stop_confirmed": {"type": "enum_ref", "ref": "runtime_events.stop_confirmed"},
+        "stopped_at": {"type": "monotonic_timestamp"},
+        "stop_reason": {"type": "text", "max_bytes": 1024}
+      }
+    },
+    "runtime_event_sequence": {
+      "required": ["version", "events"],
+      "fields": {
+        "version": {"type": "const", "value": "runtime-event-sequence-v2"},
+        "events": {"type": "runtime_event_list", "max_items": 64, "min_items": 1}
+      }
+    },
+    "context_handoff": {
+      "required": [
+        "version",
+        "handoff_id",
+        "task_id",
+        "run_id",
+        "parent_task_id",
+        "source_task_id",
+        "source_run_id",
+        "mode",
+        "original_request",
+        "accepted_plan",
+        "baseline",
+        "scope",
+        "acceptance_criteria",
+        "focused_checks",
+        "checkpoint",
+        "artifacts",
+        "active_work",
+        "open_risks",
+        "decisions"
+      ],
+      "fields": {
+        "version": {"type": "const", "value": "context-handoff-v2"},
+        "handoff_id": {"type": "token", "max_bytes": 128},
+        "task_id": {"type": "identifier"},
+        "run_id": {"type": "identifier"},
+        "parent_task_id": {"type": "identifier_or_none"},
+        "source_task_id": {"type": "identifier_or_none"},
+        "source_run_id": {"type": "identifier_or_none"},
+        "mode": {"type": "enum", "values": ["continuation", "independent"]},
+        "original_request": {"type": "text", "max_bytes": 4096},
+        "accepted_plan": {"type": "plan_list", "max_items": 32},
+        "baseline": {"type": "baseline"},
+        "scope": {"type": "record", "kind": "impact_scope"},
+        "acceptance_criteria": {"type": "acceptance_list", "max_items": 32},
+        "focused_checks": {"type": "focused_check_list", "max_items": 32},
+        "checkpoint": {"type": "checkpoint_or_none"},
+        "artifacts": {"type": "artifact_list", "max_items": 32},
+        "active_work": {"type": "active_work_list", "max_items": 32},
+        "open_risks": {"type": "risk_list", "max_items": 16},
+        "decisions": {"type": "decision_list", "max_items": 16}
+      }
+    }
+  }
+}

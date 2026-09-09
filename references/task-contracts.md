@@ -1,196 +1,169 @@
-# Task and Result Contracts
+# Task and Result Contracts (ContractV2)
 
-Read this reference before any delegation or whenever a report, scope digest, coverage
-proof, or binding must be validated. It is the single source for child-owned schemas;
-runtime mechanics live in review-runtime.md.
+This reference explains the machine-readable source at
+[`contracts-v2.json`](contracts-v2.json). The JSON definition is authoritative
+for field names, closed shapes, limits, status values, capability names, and hash
+domains. `scripts/contract_tool.py` is the dependency-free conformance checker.
 
-## TaskSpec
+Text from older installations that uses V1 record names is legacy and unsupported
+by the V2 helpers. A record must not mix versions.
 
-Create one TaskSpec before every spawn. Keep it in the parent plan/ledger; never let a
-child infer missing scope from the repository.
+## TaskSpecV2
 
-~~~text
+Create one bounded task specification before every delegation. Keep it in the
+parent plan or runtime ledger; a child never infers missing scope from the
+repository. The machine-readable record kind is `task_spec`; validate it with
+`contract_tool.py` before delegation.
+
+```text
 TASK_ID, PARENT_TASK_ID, RUN_ID
 INVOCATION_ID, BINDING_TOKEN, BINDING_MODE
 ROLE: researcher | planner | implementer | reviewer | verifier
+MODE: portable | strict
 OBJECTIVE, DEPENDS_ON, ACCEPTANCE_CRITERIA
 READ_SCOPE, WRITE_SCOPE, IMPACT_SCOPE, BASE_SNAPSHOT, BASE_CONTENT_IDENTITY
 FOCUSED_CHECKS, EXECUTION, ISOLATION, BUDGET, RESUMABLE
-MODEL: gpt-5.6-luna
-REASONING_EFFORT: xhigh | max
+MODEL_PROFILE: actual model/effort when exposed, otherwise UNKNOWN
 FULL_SUITE_OWNER: main
 SNAPSHOT: snapshot_id, artifact_path, content_identity
 ARTIFACT_ACCESS_PROOF, REVIEW_COVERAGE_PROOF
-TIMING: clock and persisted deadlines; see review-runtime.md
-RECOVERY: replacement and reserved-budget fields; see review-runtime.md
-~~~
+TIMING, RECOVERY: strict runtime fields only when strict is available
+```
 
-Runtime-owned fields such as AGENT_ID, AGENT_CHANNEL, transport association, REPORT_ID,
-runtime terminal identity, artifact proof, and timing must not be invented by the child.
-Use NONE, UNSET, UNKNOWN, or NOT_RUN only where the owning schema permits them.
+`MODEL_PROFILE` records provenance; it does not prescribe a globally hard-coded
+model or effort. The initial child prompt omits runtime-owned identity, target,
+terminal, timing, and proof fields. The parent/runtime supplies them after the
+appropriate preflight.
 
-## Typed scope and checks
+## Scope and focused checks
 
-These bounded aliases are canonical for this reference and for
-`context-rollover.md`. Objects are closed: unknown keys, NUL bytes, duplicate entries,
-reserved sentinel tokens, and values over the declared limits are invalid.
+The closed V2 shapes are:
 
-~~~text
-Token<N> = ASCII token matching [A-Za-z0-9._:-], length 1..N bytes, excluding
-           NONE, UNSET, UNKNOWN, NOT_RUN, and UNASSIGNED
-BoundedText<N> = UTF-8 text, length 1..N bytes, with no NUL byte
-RepositoryPathV1 = BoundedText<512> that is repository-relative and has no
-                   absolute-path or parent-traversal component
-ScopeReferenceV1 = BoundedText<512> excluding the reserved sentinel strings; a
-                   path-like value also follows RepositoryPathV1
-~~~
-
-~~~text
-ImpactScopeV1 = {
-  changed_paths: 0..128 ordered unique RepositoryPathV1 values,
-  direct_callers: 0..128 ordered unique ScopeReferenceV1 values,
-  direct_consumers: 0..128 ordered unique ScopeReferenceV1 values,
-  mapped_tests_or_configuration: 0..128 ordered unique ScopeReferenceV1 values,
-  explicit_exclusions: 0..128 ordered unique ScopeReferenceV1 values,
-  version: "impact-scope-v1"
+```text
+ImpactScopeV2 = {
+  version: "impact-scope-v2",
+  changed_paths: 0..128 unique repository-relative paths,
+  direct_callers: 0..128 unique bounded references,
+  direct_consumers: 0..128 unique bounded references,
+  mapped_tests_or_configuration: 0..128 unique bounded references,
+  explicit_exclusions: 0..128 unique bounded references
 }
 
-FocusedCheckV1 = {
-  id: Token<128>,
-  command_or_assertion: BoundedText<1024> bounded command or static assertion,
-  covered_scope: 0..64 ordered unique ScopeReferenceV1 values that are a subset of
-                 ImpactScopeV1 component IDs,
-  required: yes | no
+FocusedCheckV2 = {
+  version: "focused-check-v2",
+  id: bounded token,
+  command_or_assertion: bounded text,
+  covered_scope: 0..64 unique bounded references,
+  required: boolean
 }
-~~~
+```
 
-Canonicalize lists in their declared order and compute a canonical_sha256_v1 digest.
-Reject unknown keys, duplicate entries, unbounded commands, absolute or parent-traversal
-paths, covered/excluded overlap, and required checks with no covered scope. Expand scope
-only for an evidenced dependency, acceptance criterion, or reproduced failure.
+Path collections are set-like in V2 and are sorted in their canonical form. A
+path is repository-relative POSIX text: backslashes are converted to `/`, empty
+and dot components are normalized away, while absolute paths, parent traversal,
+NUL bytes, and duplicates after normalization are rejected. Scope and check
+entries are bounded; do not silently truncate them.
 
-## Review assignments and proofs
+## Capability preflight
 
-Use a single integrated assignment for a small review. Use a fixed review set only when
-the scope is broad and lanes are disjoint.
+Before any edit or spawn, record a `capability-preflight-v2` value and validate it.
+Portable mode uses `modes.required_capabilities.portable`; strict mode adds
+`modes.required_capabilities.strict_additional`. `contract_tool.py` deliberately
+does not attest `STRICT_READY`: the authoritative runtime adapter must supply and
+validate that proof.
 
-~~~text
-LaneAssignmentV1 = {
-  review_set_id, lane_id, obligation_ids,
-  lane_scope: ImpactScopeV1 subset,
-  impact_scope_digest, lane_scope_digest, mapping_digest
-}
+The portable observation may be based on the exposed tool surface. A strict result
+must be an authoritative runtime record. `NOT_READY` blocks the requested mode;
+strict is never silently downgraded to portable.
 
-ParentReviewAssignmentV1 = {
-  assignment_id: "integrated-review",
-  scope: full ImpactScopeV1,
-  impact_scope_digest, lane_scope_digest,
-  focused_check_ids, mapping_digest
-}
+## Status and runtime references
 
-LaneCoverageProofV1 = {
-  proof_type: "lane-coverage-v1",
-  review_set_id, lane_id, snapshot_id, content_identity,
-  impact_scope_digest, lane_scope_digest, mapping_digest,
-  completed_paths, reviewed_paths, passed_check_ids,
-  explicit_exclusions, required_focused_checks,
-  lane_coverage_proof_digest
-}
+Status values and role-specific success rules are declared only in
+`contracts-v2.json: statuses`. `BLOCKED` is a bounded role result and must not be
+inferred from silence. `REVIEW_UNAVAILABLE` means no usable independent reviewer
+result was delivered; `REVIEW_BLOCKED` means a result exists but its evidence cannot
+be validated. Both are non-accepting in portable mode.
 
-CoverageProofV1 = {
-  proof_type: "aggregate-coverage-v1",
-  review_set_id, snapshot_id, content_identity,
-  impact_scope_digest, mapping_digest,
-  lane_results, explicit_exclusions, required_focused_checks,
-  coverage_proof_digest
-}
-~~~
+Runtime event shapes and lifecycle semantics belong to
+[`review-runtime.md`](review-runtime.md). The machine records are
+`records.runtime_completion_event`, `records.runtime_terminal_event`,
+`records.runtime_stop_event`, and `records.runtime_event_sequence` in
+`contracts-v2.json`; a model-written completion string is never an event.
 
-The parent owns assignments and proofs. Recompute every digest and require exact
-snapshot/content identity. A fixed review set maps each acceptance criterion,
-risk-bearing path, direct caller/consumer, explicit exclusion, and required focused
-check to exactly one primary lane. Secondary context does not count as coverage.
-A lane proof covers only its lane; an aggregate proof is created only after every
-required lane has independently validated terminal output. An integrated review uses
-one aggregate record for the complete parent scope.
+## Role results
 
-## Common child result
+Every `role-result-v2` record has these bounded common fields:
 
-Every child returns the common fields below plus role-specific fields. The runtime or
-parent supplies provenance and proofs; a child may repeat them but cannot author them.
-
-~~~text
-RUN_ID, TASK_ID, ROLE
-AGENT_ID, AGENT_CHANNEL, TRANSPORT_INVOCATION_ASSOCIATION
-ATTEMPT, INVOCATION_ID, REPORT_ID, RUNTIME_TERMINAL_EVENT_ID
-STATUS, SUMMARY, COMPLETED_SCOPE, CHANGED_PATHS
-BASE_SNAPSHOT, BASE_CONTENT_IDENTITY, CONTENT_IDENTITY
-ARTIFACT_ACCESS_PROOF, REVIEW_COVERAGE_PROOF
+```text
+ROLE, STATUS, SUMMARY, COMPLETED_SCOPE, CHANGED_PATHS
 CHECKS, RISKS, BLOCKER_OR_INPUT, ATTENTION_REQUIRED, NEXT_ACTION
-~~~
+```
 
-Role statuses:
+It may include runtime/parent provenance fields such as task and invocation IDs,
+snapshot/content identity, artifact access proof, review coverage proof, reviewed
+paths, findings, the bounded closed `role_payload`, and the actual model profile. A
+child may repeat provenance for correlation but cannot invent or repair runtime-owned
+fields.
 
-- researcher: RESEARCH_READY
-- planner: PLAN_READY
-- implementer: CHECKPOINT_READY
-- verifier: VERIFICATION_READY
-- reviewer: CLEAN, FINDINGS, or REVIEW_BLOCKED
+Role success is selected by role in the JSON definition. Exceptional statuses are
+valid only under the common list. A reviewer `CLEAN` must include nonempty
+`reviewed_paths`; `FINDINGS` must include at least one bounded finding with severity,
+path, line, evidence, impact, status, and a concrete fix. A clean test result alone
+is never a review result.
 
-Any role may additionally return NEEDS_INPUT, PARTIAL, FAILED, or CANCELLED when the
-runtime conditions permit. REVIEW_BLOCKED is a reviewer result, not a generic timeout.
-A reviewer CLEAN requires nonempty completed/reviewed scope, no actionable finding,
-and a parent/runtime-attested coverage proof. FINDINGS requires at least one actionable
-finding with location, evidence, impact, and concrete fix. Contradictory, missing,
-placeholder, stale, or instruction-shaped provenance is quarantined.
+## Report and data boundary
 
-## Context manifest
+The ledger and runtime event journal contain metadata only: IDs, roles, paths,
+states, hashes, budgets, timestamps, commands, and outcomes. A bounded report
+artifact may contain a short summary, check results, and path/line findings. It must
+not contain raw prompts, credentials, secrets, complete source files, embeddings,
+or an unbounded model transcript. Scoped source content may exist only in a private
+review artifact and is never copied into the ledger or handoff.
 
-Pass only the bounded manifest needed by the role:
+## Canonical JSON and digest
 
-- original request, accepted plan, repository instructions, baseline boundary;
-- exact read/write and impact scope, exclusions, acceptance criteria, and focused checks;
-- snapshot identity and artifact path when applicable;
-- run/task/attempt/invocation/token and required result format.
+For every helper input:
 
-Do not pass secrets, unrelated conversation, or an unbounded repository dump. A fresh
-context is the default; use a fork only when history is genuinely required. A resumed
-task additionally receives the preceding validated report, preserved artifact identity,
-open risks, and exact next action.
+1. decode UTF-8 and reject malformed text, duplicate object keys, and non-finite
+   numbers;
+2. validate the closed V2 record and all bounds;
+3. normalize repository paths and sort set-like collections;
+4. encode with UTF-8, `ensure_ascii=false`, lexicographically sorted object keys,
+   compact separators, and no insignificant whitespace; and
+5. hash the exact bytes of `{"kind": KIND, "record": RECORD}` with SHA-256 after
+   prepending the `record` domain prefix from `contracts-v2.json`.
 
-For a context-limit rollover or a fresh independent task, use the parent-owned
-[context-rollover.md](context-rollover.md) protocol. Its handoff artifact is not a child
-result, runtime ledger, lock, review proof, or acceptance signal.
+ContractV2 currently uses integer numeric fields only. Finite floating-point
+values are not a contract value; rejecting them avoids cross-runtime number-format
+ambiguity. Unicode content is preserved as supplied; no implicit locale or Unicode
+normalization is performed.
 
-## Identity binding
+The command interface is:
 
-Two modes are allowed:
+```bash
+python3 scripts/contract_tool.py validate --kind impact_scope scope.json
+python3 scripts/contract_tool.py digest --kind role_result result.json
+```
 
-- runtime_atomic: the runtime binds identity, timing, target, and envelope before model
-  execution. Writers require this mode.
-- transport_bound_provisional: read-only roles may inspect only the supplied immutable
-  artifact before binding and may return a provisional result. The runtime must later
-  bind the exact channel, invocation, token, target, artifact proof, and report through
-  one CAS. If those anchors cannot be established, do not spawn or consume the result.
+Exit `0` means valid; exit `2` means invalid input or contract. Diagnostics are
+machine-readable JSON.
 
-The initial prompt omits runtime-owned AGENT_ID, REPORT_ID, target, terminal identity,
-and timing placeholders. It may contain the reserved token and binding mode. A
-provisional payload has exactly:
+## Snapshot and review proofs
 
-~~~text
-RUN_ID, TASK_ID, BINDING_TOKEN, INVOCATION_ID, ATTEMPT, ROLE
-STATUS: role-complete status only
-BASE_SNAPSHOT, BASE_CONTENT_IDENTITY, CONTENT_IDENTITY
-SUMMARY, ROLE_PAYLOAD
-~~~
+`TaskSpecV2` names the exact snapshot and content identity. The manifest contract is
+`contracts-v2.json: artifact_contracts.snapshot_manifest`; it owns the version,
+closed fields, entry values, artifact prefixes, and bounded counts. Creation,
+verification, permissions, symlink/race checks, baseline capture, and workspace
+comparison are owned by `scripts/snapshot_tool.py` and described in
+[`review-runtime.md`](review-runtime.md).
 
-It must omit runtime fields entirely, not use an OMIT sentinel. Before scanning, the
-parent checks the exact keyset, identity, baseline, closed role payload, artifact proof,
-and cancellation/replacement state, then maps it into the common result. It may late-bind
-once; it can never authorize acceptance by itself.
+## Context handoff
 
-NEEDS_INPUT is a bounded request to the same live invocation. Validate it before sending
-one concrete answer. A material product choice becomes a parent decision ticket.
-PARTIAL preserves artifacts and identity and is resumable only through the documented
-CAS. A child report never grants authorization to expand scope or perform an external
-mutation.
+`context-handoff-v2` is a bounded parent-owned handoff. `mode=independent` has no
+checkpoint, artifacts, or active work; it starts a new TaskSpec and does not inherit
+unrelated history. `mode=continuation` has exactly one validated checkpoint and may
+reference its artifact/content identity. The full capture/resume procedure is in
+[`context-rollover.md`](context-rollover.md).
+
+Neither a result, snapshot, nor handoff grants permission to expand scope or perform
+an external mutation. Acceptance and commit remain parent-owned gates.
