@@ -8,9 +8,10 @@ the closed records in [`contracts-v2.json`](contracts-v2.json).
 
 Strict mode must stop before mutation unless an authoritative record validates the
 portable set plus `modes.required_capabilities.strict_additional`. The helper
-validates preflight shape and missing capabilities but cannot upgrade an observed
-surface to `STRICT_READY`; only the runtime adapter can. Never silently downgrade
-strict.
+validates fail-closed preflight shapes but deliberately rejects `STRICT_READY` and
+`ACCEPTED_STRICT`; only an external authoritative runtime adapter can attest and
+validate those states. This repository specifies the adapter obligations but does
+not ship an adapter or conformance claim. Never silently downgrade strict.
 
 ## Budget and monotonic timing
 
@@ -19,6 +20,10 @@ and 1800-second initial attempt; Extended uses 10800 and 3600. The fixed budget
 covers the attempt, recovery grace, one replacement, and its review. Reserve at
 least 60 seconds for recovery, 120 for replacement decision, 120 for spawn/binding,
 and 1500 for replacement review.
+
+Record the delegated attempt bound in the TaskSpec `execution-budget-v2` object
+(`wall_clock_seconds`, `max_turns`, and `max_output_bytes`). The larger lifecycle
+tier remains parent/runtime policy and must not be inferred from the task object.
 
 Use one foreground blocking wait per invocation; a wrapper continuation is the same
 wait. Never poll or inspect a moving workspace. Silence, empty output, timeout

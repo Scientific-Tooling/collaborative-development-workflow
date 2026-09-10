@@ -1,0 +1,24 @@
+{
+  "version": "runtime-event-sequence-v2",
+  "events": [
+    {
+      "version": "runtime-completion-event-v2",
+      "event_type": "RUNTIME_COMPLETION_EVENT",
+      "event_id": "event-1",
+      "run_id": "run-1",
+      "task_id": "task-1",
+      "invocation_id": "invocation-1",
+      "attempt": 1,
+      "agent_id": "agent-1",
+      "agent_channel": "channel-1",
+      "transport_invocation_association": "association-1",
+      "runtime_target": "target-1",
+      "binding_token": "binding-1",
+      "clock_source": "monotonic",
+      "status": "completed",
+      "result_delivery_confirmed": "yes",
+      "terminal_at": "123.4",
+      "terminal_reason": "result delivered"
+    }
+  ]
+}

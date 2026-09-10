@@ -46,8 +46,9 @@ focused checks, snapshot/artifact identity
 report disposition, review status, outcome, and reason
 ```
 
-Use the helper to validate records. Do not invent strict terminal IDs, CAS versions,
-stop confirmations, or artifact proofs in portable state.
+Use the helper to validate records. Portable artifact and coverage proofs are
+derived only from verified snapshot operations and the bound reviewer result; do
+not invent them. Never invent strict terminal IDs, CAS versions, or stop confirmations.
 
 ## Strict runtime ledger
 
@@ -83,11 +84,10 @@ cleanup is never a response to silence or timeout.
 
 ## Review coordination
 
-Freeze the exact impact scope with `snapshot_tool.py` before starting a reviewer.
-Use one integrated reviewer for a small scope. Use a fixed review set only when
-obligation lanes are disjoint and their mapping is chosen before freeze. Each lane
-reviews only its assignment; aggregate only complete results for the same
-snapshot/content identity. Portable review mechanics are in
+Freeze the exact review paths with `snapshot_tool.py` before starting a reviewer.
+Use one integrated reviewer for acceptance. The public V2 contract has no review
+lane assignment or aggregate-proof record; multiple partial reviews therefore
+cannot be combined into `CLEAN`. Portable review mechanics are in
 [`review-runtime.md`](review-runtime.md); strict lifecycle mechanics are in the
 strict references above.
 

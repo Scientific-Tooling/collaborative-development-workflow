@@ -30,14 +30,21 @@ authorization boundary. For each validated finding:
 1. retain the exact old report and snapshot identity;
 2. apply only a confirmed, in-scope fix;
 3. rerun the affected focused checks;
-4. recanonicalize the impact scope if the fix changes it;
-5. freeze a new snapshot; and
-6. rerun the review against the new snapshot with a fresh independent reviewer
-   context. A single integrated review may narrow to affected obligations; a fixed
-   review set must rerun every lane and rebuild aggregate coverage. No old lane or
-   `CLEAN` result transfers to the new identity.
+4. rerun the prescribed full validation;
+5. confirm that the task objective, acceptance definitions, focused checks, and
+   impact scope remain unchanged;
+6. freeze and verify a new snapshot with new manifest/content identities; and
+7. rerun one integrated review against every declared review path in a fresh
+   independent context. No old coverage or `CLEAN` result transfers to the new
+   identity. Review-lane aggregation is not supported by the public V2 contracts.
 
-Permit two fix/review rounds. If the third review still has actionable findings,
+If a finding requires a scope, objective, criterion-definition, or focused-check
+change, stop this acceptance sequence and start a newly authorized task/evidence
+bundle. Never shrink or silently rewrite the original review task to obtain
+acceptance.
+
+Permit at most three total review rounds: the initial review plus two fix/review
+rounds. If the third review still has actionable findings,
 pause and request explicit user authorization. A finding that requires a product
 decision, conflicts with user changes, or cannot be reproduced also pauses at the
 user-decision gate.

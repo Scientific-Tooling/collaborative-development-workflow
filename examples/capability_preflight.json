@@ -1,0 +1,12 @@
+{
+  "version": "capability-preflight-v2",
+  "mode": "portable",
+  "result": "PORTABLE_READY",
+  "capabilities": {
+    "read_only_subagent_identity": true,
+    "terminal_result_delivery": true,
+    "shared_snapshot_access": true
+  },
+  "missing": [],
+  "authority": "observed_tool_surface"
+}

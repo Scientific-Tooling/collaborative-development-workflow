@@ -1,0 +1,33 @@
+{
+  "version": "context-handoff-v2",
+  "handoff_id": "handoff-1",
+  "task_id": "task-2",
+  "run_id": "run-2",
+  "parent_task_id": null,
+  "source_task_id": null,
+  "source_run_id": null,
+  "mode": "independent",
+  "original_request": "start a separate bounded task",
+  "accepted_plan": [
+    {"step_id": "scope", "status": "done", "summary": "scope the task"}
+  ],
+  "baseline": {"branch": "main", "head": "abc123", "status_digest": "status123"},
+  "scope": {
+    "version": "impact-scope-v2",
+    "changed_paths": [],
+    "review_paths": [],
+    "direct_callers": [],
+    "direct_consumers": [],
+    "mapped_tests_or_configuration": [],
+    "explicit_exclusions": []
+  },
+  "acceptance_criteria": [
+    {"criterion_id": "bounded", "status": "pending", "summary": "complete bounded work"}
+  ],
+  "focused_checks": [],
+  "checkpoint": null,
+  "artifacts": [],
+  "active_work": [],
+  "open_risks": [],
+  "decisions": []
+}

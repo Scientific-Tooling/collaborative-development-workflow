@@ -36,11 +36,15 @@
     "plan_steps": 32,
     "artifacts": 32,
     "active_work": 32,
-    "review_rounds": 2,
+    "review_rounds": 3,
     "symlink_target_bytes": 4096,
     "json_bytes": 4194304,
     "json_depth": 64,
     "snapshot_depth": 64,
+    "snapshot_file_bytes": 16777216,
+    "snapshot_total_bytes": 67108864,
+    "git_output_bytes": 16777216,
+    "git_timeout_seconds": 30,
     "runtime_events": 64
   },
   "statuses": {
@@ -59,6 +63,11 @@
       "verifier": "VERIFICATION_READY"
     },
     "review": [
+      "CLEAN",
+      "FINDINGS",
+      "REVIEW_BLOCKED"
+    ],
+    "review_disposition": [
       "CLEAN",
       "FINDINGS",
       "REVIEW_UNAVAILABLE",
@@ -114,7 +123,7 @@
       "MITIGATED",
       "ACCEPTED"
     ],
-    "actionable_finding_statuses": ["OPEN", "WONT_FIX_WITH_AUTHORIZATION"],
+    "actionable_finding_statuses": ["OPEN"],
     "decision_statuses": ["pending", "accepted", "rejected"],
     "plan_step_statuses": ["planned", "in_progress", "done", "blocked"],
     "acceptance_statuses": ["pending", "met", "blocked"],
@@ -127,6 +136,8 @@
       "INTEGRATION_PENDING",
       "INTEGRATED"
     ],
+    "coverage_statuses": ["COMPLETE", "INCOMPLETE"],
+    "commit_statuses": ["NOT_REQUESTED", "PENDING", "CREATED", "BLOCKED"],
     "not_accepted_reasons": [
       "REVIEW_UNAVAILABLE",
       "REVIEW_BLOCKED",
@@ -135,7 +146,8 @@
       "USER_DECISION_REQUIRED",
       "STRICT_CAPABILITY_MISSING",
       "SCOPE_CHANGED",
-      "QUARANTINED_RESULT"
+      "QUARANTINED_RESULT",
+      "EVIDENCE_INVALID"
     ],
     "not_accepted_reason_rules": {
       "REVIEW_UNAVAILABLE": {
@@ -160,7 +172,8 @@
       },
       "QUARANTINED_RESULT": {
         "review_status": ["REVIEW_BLOCKED", "REVIEW_UNAVAILABLE"]
-      }
+      },
+      "EVIDENCE_INVALID": {}
     }
   },
   "runtime_events": {
@@ -188,12 +201,13 @@
         "shared_snapshot_access"
       ],
       "strict_additional": [
-      "atomic_spawn_binding",
-      "cas_state",
-      "verified_monotonic_timing",
-      "runtime_completion_events",
-      "exact_stop_targets",
-      "immutable_artifact_proofs"
+        "atomic_spawn_binding",
+        "cas_state",
+        "verified_monotonic_timing",
+        "runtime_lifecycle_events",
+        "exact_stop_targets",
+        "immutable_artifact_proofs",
+        "authoritative_runtime_adapter"
       ]
     }
   },
@@ -240,7 +254,10 @@
         "max_entries": {"limit_ref": "limits.scope_entries", "multiplier": 64},
         "snapshot_depth_ref": "limits.snapshot_depth",
         "symlink_target_bytes_ref": "limits.symlink_target_bytes",
-        "manifest_bytes_ref": "limits.json_bytes"
+        "manifest_bytes_ref": "limits.json_bytes",
+        "file_bytes_ref": "limits.snapshot_file_bytes",
+        "total_bytes_ref": "limits.snapshot_total_bytes",
+        "git_output_bytes_ref": "limits.git_output_bytes"
       }
     }
   },
@@ -411,6 +428,103 @@
     }
   },
   "records": {
+    "execution_budget": {
+      "required": ["version", "wall_clock_seconds", "max_turns", "max_output_bytes"],
+      "fields": {
+        "version": {"type": "const", "value": "execution-budget-v2"},
+        "wall_clock_seconds": {"type": "positive_integer"},
+        "max_turns": {"type": "positive_integer"},
+        "max_output_bytes": {"type": "positive_integer"}
+      }
+    },
+    "artifact_access_proof": {
+      "required": [
+        "version",
+        "proof_id",
+        "mode",
+        "base_snapshot",
+        "base_content_identity",
+        "snapshot_id",
+        "manifest_identity",
+        "content_identity",
+        "impact_scope_digest",
+        "scope_paths",
+        "reviewer_result_digest",
+        "artifact_verification_status",
+        "workspace_compare_status"
+      ],
+      "fields": {
+        "version": {"type": "const", "value": "artifact-access-proof-v2"},
+        "proof_id": {"type": "identifier"},
+        "mode": {"type": "enum", "values": ["portable", "strict"]},
+        "base_snapshot": {"type": "identifier"},
+        "base_content_identity": {"type": "identifier"},
+        "snapshot_id": {"type": "sha256"},
+        "manifest_identity": {"type": "sha256"},
+        "content_identity": {"type": "sha256"},
+        "impact_scope_digest": {"type": "sha256"},
+        "scope_paths": {"type": "path_list", "max_items": 128, "set_like": true},
+        "reviewer_result_digest": {"type": "sha256"},
+        "artifact_verification_status": {"type": "enum", "values": ["PASSED", "FAILED"]},
+        "workspace_compare_status": {"type": "enum_ref", "ref": "statuses.validation"}
+      }
+    },
+    "review_coverage_proof": {
+      "required": [
+        "version",
+        "proof_id",
+        "round",
+        "snapshot_id",
+        "content_identity",
+        "impact_scope_digest",
+        "artifact_access_proof_digest",
+        "reviewer_result_digest",
+        "review_paths",
+        "completed_scope",
+        "required_check_ids",
+        "passed_check_ids",
+        "prior_reviewer_result_digest",
+        "addressed_finding_ids",
+        "coverage_status"
+      ],
+      "fields": {
+        "version": {"type": "const", "value": "review-coverage-proof-v2"},
+        "proof_id": {"type": "identifier"},
+        "round": {"type": "positive_integer"},
+        "snapshot_id": {"type": "sha256"},
+        "content_identity": {"type": "sha256"},
+        "impact_scope_digest": {"type": "sha256"},
+        "artifact_access_proof_digest": {"type": "sha256"},
+        "reviewer_result_digest": {"type": "sha256"},
+        "review_paths": {"type": "path_list", "max_items": 128, "set_like": true},
+        "completed_scope": {"type": "reference_list", "max_items": 128, "set_like": true},
+        "required_check_ids": {"type": "token_list", "max_items": 32, "set_like": true},
+        "passed_check_ids": {"type": "token_list", "max_items": 32, "set_like": true},
+        "prior_reviewer_result_digest": {"type": "sha256_or_none"},
+        "addressed_finding_ids": {"type": "token_list", "max_items": 64, "set_like": true},
+        "coverage_status": {"type": "enum_ref", "ref": "statuses.coverage_statuses"}
+      }
+    },
+    "review_round": {
+      "required": ["version", "round", "task_spec", "review_result", "artifact_access_proof", "review_coverage_proof"],
+      "fields": {
+        "version": {"type": "const", "value": "review-round-v2"},
+        "round": {"type": "positive_integer"},
+        "task_spec": {"type": "record", "kind": "task_spec"},
+        "review_result": {"type": "record", "kind": "role_result"},
+        "artifact_access_proof": {"type": "record", "kind": "artifact_access_proof"},
+        "review_coverage_proof": {"type": "record", "kind": "review_coverage_proof"}
+      }
+    },
+    "acceptance_evidence": {
+      "required": ["version", "capability_preflight", "review_rounds", "workflow_outcome"],
+      "fields": {
+        "version": {"type": "const", "value": "acceptance-evidence-v2"},
+        "capability_preflight": {"type": "record", "kind": "capability_preflight"},
+        "review_rounds": {"type": "record_list", "kind": "review_round", "min_items": 1, "max_items": 3},
+        "workflow_outcome": {"type": "record", "kind": "workflow_outcome"}
+      }
+    },
     "task_spec": {
       "required": [
         "version",
@@ -438,6 +552,7 @@
         "model_profile",
         "full_suite_owner",
         "snapshot_id",
+        "content_identity",
         "artifact_path",
         "artifact_access_proof",
         "review_coverage_proof"
@@ -449,12 +564,12 @@
         "run_id": {"type": "identifier"},
         "invocation_id": {"type": "identifier_or_none"},
         "binding_token": {"type": "identifier_or_none"},
-        "binding_mode": {"type": "enum", "values": ["portable", "strict"]},
+        "binding_mode": {"type": "enum", "values": ["transport_bound_provisional", "runtime_atomic"]},
         "role": {"type": "enum_ref", "ref": "statuses.roles"},
         "mode": {"type": "enum", "values": ["portable", "strict"]},
         "objective": {"type": "text", "max_bytes": 4096},
         "depends_on": {"type": "token_list", "max_items": 32, "set_like": true},
-        "acceptance_criteria": {"type": "acceptance_list", "max_items": 32},
+        "acceptance_criteria": {"type": "acceptance_list", "min_items": 1, "max_items": 32},
         "read_scope": {"type": "path_list", "max_items": 128, "set_like": true},
         "write_scope": {"type": "path_list", "max_items": 128, "set_like": true},
         "impact_scope": {"type": "record", "kind": "impact_scope"},
@@ -463,11 +578,12 @@
         "focused_checks": {"type": "focused_check_list", "max_items": 32},
         "execution": {"type": "text", "max_bytes": 1024},
         "isolation": {"type": "text", "max_bytes": 1024},
-        "budget": {"type": "text", "max_bytes": 1024},
+        "budget": {"type": "record", "kind": "execution_budget"},
         "resumable": {"type": "boolean"},
         "model_profile": {"type": "model_profile"},
         "full_suite_owner": {"type": "const", "value": "main"},
-        "snapshot_id": {"type": "identifier_or_none"},
+        "snapshot_id": {"type": "sha256_or_none"},
+        "content_identity": {"type": "sha256_or_none"},
         "artifact_path": {"type": "text_or_none", "max_bytes": 512},
         "artifact_access_proof": {"type": "identifier_or_none"},
         "review_coverage_proof": {"type": "identifier_or_none"}
@@ -477,6 +593,7 @@
       "required": [
         "version",
         "changed_paths",
+        "review_paths",
         "direct_callers",
         "direct_consumers",
         "mapped_tests_or_configuration",
@@ -485,6 +602,7 @@
       "fields": {
         "version": {"type": "const", "value": "impact-scope-v2"},
         "changed_paths": {"type": "path_list", "max_items": 128, "set_like": true},
+        "review_paths": {"type": "path_list", "max_items": 128, "set_like": true},
         "direct_callers": {"type": "reference_list", "max_items": 128, "set_like": true},
         "direct_consumers": {"type": "reference_list", "max_items": 128, "set_like": true},
         "mapped_tests_or_configuration": {"type": "reference_list", "max_items": 128, "set_like": true},
@@ -545,13 +663,15 @@
         "attempt": {"type": "positive_integer"},
         "invocation_id": {"type": "identifier"},
         "report_id": {"type": "identifier"},
+        "runtime_completion_event_id": {"type": "identifier_or_none"},
         "runtime_terminal_event_id": {"type": "identifier_or_none"},
         "agent_id": {"type": "identifier_or_none"},
         "agent_channel": {"type": "identifier_or_none"},
         "transport_invocation_association": {"type": "identifier_or_none"},
         "base_snapshot": {"type": "identifier_or_none"},
         "base_content_identity": {"type": "identifier_or_none"},
-        "content_identity": {"type": "identifier_or_none"},
+        "snapshot_id": {"type": "sha256_or_none"},
+        "content_identity": {"type": "sha256_or_none"},
         "artifact_access_proof": {"type": "identifier_or_none"},
         "review_coverage_proof": {"type": "identifier_or_none"},
         "reviewed_paths": {"type": "path_list", "max_items": 128, "set_like": true},
@@ -560,18 +680,42 @@
       }
     },
     "workflow_outcome": {
-      "required": ["version", "mode", "outcome", "accepted", "review_status", "reason", "validation_status", "commit_requested"],
+      "required": [
+        "version",
+        "mode",
+        "outcome",
+        "accepted",
+        "review_status",
+        "reason",
+        "validation_status",
+        "capability_preflight_digest",
+        "final_review_round_digest",
+        "validation_checks",
+        "full_validation_check_id",
+        "commit_requested",
+        "commit_status",
+        "commit_blocker",
+        "snapshot_id",
+        "content_identity",
+        "commit_id"
+      ],
       "fields": {
         "version": {"type": "const", "value": "workflow-outcome-v2"},
         "mode": {"type": "enum", "values": ["portable", "strict"]},
         "outcome": {"type": "enum_ref", "ref": "statuses.workflow_outcomes"},
         "accepted": {"type": "boolean"},
-        "review_status": {"type": "enum_ref", "ref": "statuses.review"},
+        "review_status": {"type": "enum_ref", "ref": "statuses.review_disposition"},
         "reason": {"type": "enum_ref_or_none", "ref": "statuses.not_accepted_reasons"},
         "validation_status": {"type": "enum_ref", "ref": "statuses.validation"},
+        "capability_preflight_digest": {"type": "sha256_or_none"},
+        "final_review_round_digest": {"type": "sha256_or_none"},
+        "validation_checks": {"type": "check_list", "max_items": 32},
+        "full_validation_check_id": {"type": "identifier_or_none"},
         "commit_requested": {"type": "boolean"},
-        "snapshot_id": {"type": "identifier_or_none"},
-        "content_identity": {"type": "identifier_or_none"},
+        "commit_status": {"type": "enum_ref", "ref": "statuses.commit_statuses"},
+        "commit_blocker": {"type": "text_or_none", "max_bytes": 1024},
+        "snapshot_id": {"type": "sha256_or_none"},
+        "content_identity": {"type": "sha256_or_none"},
         "commit_id": {"type": "identifier_or_none"}
       }
     },
@@ -678,7 +822,7 @@
         "accepted_plan": {"type": "plan_list", "max_items": 32},
         "baseline": {"type": "baseline"},
         "scope": {"type": "record", "kind": "impact_scope"},
-        "acceptance_criteria": {"type": "acceptance_list", "max_items": 32},
+        "acceptance_criteria": {"type": "acceptance_list", "min_items": 1, "max_items": 32},
         "focused_checks": {"type": "focused_check_list", "max_items": 32},
         "checkpoint": {"type": "checkpoint_or_none"},
         "artifacts": {"type": "artifact_list", "max_items": 32},

@@ -97,14 +97,14 @@ A small integrated strict review has one replacement slot. It is available only 
 The replacement uses the same snapshot deadline and fixed budget. It is not a new
 review round and cannot inspect a moving workspace. A replacement spawn failure
 closes the slot and leaves `REVIEW_BLOCKED`; a second replacement is never implicit.
-For a review set, the parent/session row owns the single set-level slot, so one lane
-cannot authorize another lane's replacement.
+The public V2 contract supports one integrated reviewer, so this slot cannot be
+partitioned or multiplied through review lanes.
 
 ## Strict fresh review round
 
 A fresh review round is neither a findings fix nor a replacement. It requires
 explicit user authorization, confirmed stop or quarantine of every old invocation,
-a new run and review-set identity, a new snapshot identity, a separate budget, and
+a new run and reviewer invocation, a new snapshot identity, a separate budget, and
 an independent provider/model/channel with `fork_context=false`. Old silence,
 findings, partial output, coverage, and `CLEAN` claims do not carry forward.
 

@@ -26,6 +26,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 CONTRACT_PATH = SCRIPT_DIR.parent / "references" / "contracts-v2.json"
 SENTINELS: set[str] = set()
 TOKEN_RE = re.compile(r"^[A-Za-z0-9._:-]+$")
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 DRIVE_RE = re.compile(r"^[A-Za-z]:")
 MONOTONIC_TIMESTAMP_RE = re.compile(r"^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$")
 MAX_INPUT_BYTES = 4 * 1024 * 1024
@@ -106,12 +107,19 @@ def _read_file_bytes(path: str) -> bytes:
             before = os.fstat(file_descriptor)
             if not stat.S_ISREG(before.st_mode):
                 raise ContractError(f"{path}: input is not a regular file")
+            limit = _input_limit()
+            if before.st_size > limit:
+                raise ContractError(f"{path}: input exceeds {limit} bytes")
             chunks: list[bytes] = []
+            size = 0
             while True:
-                chunk = os.read(file_descriptor, 1024 * 1024)
+                chunk = os.read(file_descriptor, min(1024 * 1024, limit + 1 - size))
                 if not chunk:
                     break
                 chunks.append(chunk)
+                size += len(chunk)
+                if size > limit:
+                    raise ContractError(f"{path}: input exceeds {limit} bytes")
             after = os.fstat(file_descriptor)
             data = b"".join(chunks)
             if before.st_size != len(data) or (
@@ -128,8 +136,6 @@ def _read_file_bytes(path: str) -> bytes:
                 after.st_ctime_ns,
             ):
                 raise ContractError(f"{path}: input changed while reading")
-            if len(data) > _input_limit():
-                raise ContractError(f"{path}: input exceeds {_input_limit()} bytes")
             return data
         finally:
             os.close(file_descriptor)
@@ -206,11 +212,14 @@ _FIELD_SPEC_TYPES = {
     "plan_list",
     "positive_integer",
     "record",
+    "record_list",
     "reference_list",
     "risk_list",
     "role_payload",
     "role_status",
     "runtime_event_list",
+    "sha256",
+    "sha256_or_none",
     "text",
     "text_list",
     "text_or_none",
@@ -259,7 +268,7 @@ def _validate_field_spec(root: dict[str, Any], spec: Any, field: str) -> None:
         target = _contract_ref(root, spec["ref"], field=f"{field}.ref")
         if not isinstance(target, list):
             raise ContractError(f"{field}.ref must resolve to a list")
-    if kind == "record":
+    if kind in {"record", "record_list"}:
         target = spec.get("kind")
         if not isinstance(target, str) or target not in root.get("records", {}):
             raise ContractError(f"{field}.kind references an unknown record: {target!r}")
@@ -483,7 +492,13 @@ def _validate_contract_references(root: dict[str, Any]) -> None:
         raise ContractError("artifact_contracts.snapshot_manifest.version must be non-empty text")
     limits = manifest["limits"]
     expected_limit_keys = {
-        "max_entries", "snapshot_depth_ref", "symlink_target_bytes_ref", "manifest_bytes_ref"
+        "max_entries",
+        "snapshot_depth_ref",
+        "symlink_target_bytes_ref",
+        "manifest_bytes_ref",
+        "file_bytes_ref",
+        "total_bytes_ref",
+        "git_output_bytes_ref",
     }
     if not isinstance(limits, dict) or set(limits) != expected_limit_keys:
         raise ContractError("artifact_contracts.snapshot_manifest.limits has an invalid closed shape")
@@ -493,7 +508,14 @@ def _validate_contract_references(root: dict[str, Any]) -> None:
     _contract_ref(root, max_entries["limit_ref"], field="artifact manifest max_entries.limit_ref")
     if isinstance(max_entries["multiplier"], bool) or not isinstance(max_entries["multiplier"], int) or max_entries["multiplier"] < 1:
         raise ContractError("artifact manifest max_entries.multiplier must be positive")
-    for name in ("snapshot_depth_ref", "symlink_target_bytes_ref", "manifest_bytes_ref"):
+    for name in (
+        "snapshot_depth_ref",
+        "symlink_target_bytes_ref",
+        "manifest_bytes_ref",
+        "file_bytes_ref",
+        "total_bytes_ref",
+        "git_output_bytes_ref",
+    ):
         resolved_limit = _contract_ref(root, limits[name], field=f"artifact manifest {name}")
         if isinstance(resolved_limit, bool) or not isinstance(resolved_limit, int) or resolved_limit < 0:
             raise ContractError(f"artifact manifest {name} must resolve to a non-negative integer")
@@ -693,6 +715,16 @@ def _validate_list(
         item_validator(item, f"{field}[{index}]")
 
 
+def _require_unique_item_key(value: list[Any], key: str, field: str) -> None:
+    """Reject distinct list entries that reuse one semantic identifier."""
+    seen: set[Any] = set()
+    for index, item in enumerate(value):
+        marker = item[key]
+        if marker in seen:
+            raise ContractError(f"{field} contains duplicate {key} at index {index}")
+        seen.add(marker)
+
+
 def _simple_text_list(value: Any, *, max_items: int, max_bytes: int, field: str) -> None:
     _validate_list(
         value,
@@ -774,6 +806,12 @@ def _validate_value(value: Any, spec: dict[str, Any], field: str, errors: list[s
         _identifier(value, allow_none=False, field=field)
     elif kind == "identifier_or_none":
         _identifier(value, allow_none=True, field=field)
+    elif kind == "sha256":
+        if not isinstance(value, str) or not SHA256_RE.fullmatch(value):
+            raise ContractError(f"{field} must be a lowercase SHA-256 digest")
+    elif kind == "sha256_or_none":
+        if value is not None and (not isinstance(value, str) or not SHA256_RE.fullmatch(value)):
+            raise ContractError(f"{field} must be a lowercase SHA-256 digest or null")
     elif kind == "boolean":
         if not isinstance(value, bool):
             raise ContractError(f"{field} must be a boolean")
@@ -821,16 +859,9 @@ def _validate_value(value: Any, spec: dict[str, Any], field: str, errors: list[s
     elif kind == "capability_map":
         if not isinstance(value, dict):
             raise ContractError(f"{field} must be an object")
-        allowed = set(ALL_CAPABILITIES)
-        if set(value) != allowed:
-            missing = sorted(allowed - set(value))
-            unknown = sorted(set(value) - allowed)
-            details = []
-            if missing:
-                details.append(f"missing={','.join(missing)}")
-            if unknown:
-                details.append(f"unknown={','.join(unknown)}")
-            raise ContractError(f"{field} capability keys do not match ContractV2 ({'; '.join(details)})")
+        unknown = sorted(set(value) - set(ALL_CAPABILITIES))
+        if unknown:
+            raise ContractError(f"{field} has unknown capability keys: {','.join(unknown)}")
         if any(not isinstance(item, bool) for item in value.values()):
             raise ContractError(f"{field} values must be booleans")
     elif kind == "role_status":
@@ -849,6 +880,7 @@ def _validate_value(value: Any, spec: dict[str, Any], field: str, errors: list[s
             item_validator=lambda item, item_field: _validate_check(item, item_field),
             unique=True,
         )
+        _require_unique_item_key(value, "id", field)
     elif kind == "risk_list":
         _validate_list(
             value,
@@ -857,6 +889,7 @@ def _validate_value(value: Any, spec: dict[str, Any], field: str, errors: list[s
             item_validator=lambda item, item_field: _validate_risk(item, item_field),
             unique=True,
         )
+        _require_unique_item_key(value, "id", field)
     elif kind == "finding_list":
         _validate_list(
             value,
@@ -865,6 +898,7 @@ def _validate_value(value: Any, spec: dict[str, Any], field: str, errors: list[s
             item_validator=lambda item, item_field: _validate_finding(item, item_field),
             unique=True,
         )
+        _require_unique_item_key(value, "id", field)
     elif kind == "model_profile":
         _validate_model_profile(value, field)
     elif kind == "role_payload":
@@ -872,10 +906,26 @@ def _validate_value(value: Any, spec: dict[str, Any], field: str, errors: list[s
     elif kind == "record":
         sub_kind = spec["kind"]
         errors.extend(f"{field}.{item}" for item in validate_record(value, sub_kind))
+    elif kind == "record_list":
+        _validate_list(
+            value,
+            max_items=spec.get("max_items", CONTRACT["limits"]["scope_entries"]),
+            field=field,
+            item_validator=lambda item, item_field: _validate_record_item(item, spec["kind"], item_field),
+            unique=False,
+        )
+        if len(value) < spec.get("min_items", 0):
+            raise ContractError(f"{field} has fewer than {spec['min_items']} entries")
+        if spec["kind"] == "review_round":
+            _require_unique_item_key(value, "round", field)
     elif kind == "plan_list":
         _validate_list(value, max_items=spec.get("max_items", 32), field=field, item_validator=_validate_plan, unique=True)
+        _require_unique_item_key(value, "step_id", field)
     elif kind == "acceptance_list":
         _validate_list(value, max_items=spec.get("max_items", 32), field=field, item_validator=_validate_acceptance, unique=True)
+        if len(value) < spec.get("min_items", 0):
+            raise ContractError(f"{field} has fewer than {spec['min_items']} entries")
+        _require_unique_item_key(value, "criterion_id", field)
     elif kind == "focused_check_list":
         _validate_list(
             value,
@@ -884,6 +934,7 @@ def _validate_value(value: Any, spec: dict[str, Any], field: str, errors: list[s
             item_validator=lambda item, item_field: _validate_record_item(item, "focused_check", item_field),
             unique=True,
         )
+        _require_unique_item_key(value, "id", field)
     elif kind == "baseline":
         _validate_baseline(value, field)
     elif kind == "checkpoint_or_none":
@@ -891,10 +942,13 @@ def _validate_value(value: Any, spec: dict[str, Any], field: str, errors: list[s
             _validate_checkpoint(value, field)
     elif kind == "artifact_list":
         _validate_list(value, max_items=spec.get("max_items", 32), field=field, item_validator=_validate_artifact, unique=True)
+        _require_unique_item_key(value, "artifact_id", field)
     elif kind == "active_work_list":
         _validate_list(value, max_items=spec.get("max_items", 32), field=field, item_validator=_validate_active_work, unique=True)
+        _require_unique_item_key(value, "invocation_id", field)
     elif kind == "decision_list":
         _validate_list(value, max_items=spec.get("max_items", 16), field=field, item_validator=_validate_decision, unique=True)
+        _require_unique_item_key(value, "decision_id", field)
     elif kind == "runtime_event_list":
         _validate_list(
             value,
@@ -1015,6 +1069,54 @@ def _require_real_identifier(record: dict[str, Any], field: str) -> None:
         raise ContractError(f"{field} must contain a non-sentinel identity")
 
 
+def _scope_contains(scope_paths: Iterable[str], path: str) -> bool:
+    normalized = normalize_repo_path(path)
+    return any(
+        normalized == scope_path or normalized.startswith(f"{scope_path}/")
+        for scope_path in scope_paths
+    )
+
+
+def _path_scopes_overlap(first: str, second: str) -> bool:
+    """Return whether two repository path scopes contain one another."""
+    try:
+        first_path = normalize_repo_path(first)
+        second_path = normalize_repo_path(second)
+    except ContractError:
+        return False
+    return (
+        first_path == second_path
+        or first_path.startswith(f"{second_path}/")
+        or second_path.startswith(f"{first_path}/")
+    )
+
+
+def _path_scope_contains(scope: str, path: str) -> bool:
+    """Return whether one repository path scope contains the path."""
+    try:
+        normalized_scope = normalize_repo_path(scope)
+        normalized_path = normalize_repo_path(path)
+    except ContractError:
+        return False
+    return normalized_path == normalized_scope or normalized_path.startswith(
+        f"{normalized_scope}/"
+    )
+
+
+def _acceptance_definitions(task: dict[str, Any]) -> dict[str, str]:
+    return {
+        criterion["criterion_id"]: criterion["summary"]
+        for criterion in task["acceptance_criteria"]
+    }
+
+
+def _focused_check_definitions(task: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {
+        check["id"]: canonicalize_record(check, "focused_check")
+        for check in task["focused_checks"]
+    }
+
+
 def validate_record(record: Any, kind: str) -> list[str]:
     """Return deterministic validation errors for a ContractV2 record."""
     if kind not in CONTRACT["records"]:
@@ -1027,19 +1129,70 @@ def validate_record(record: Any, kind: str) -> list[str]:
         _validate_object(record, spec, "record", errors)
         if kind == "impact_scope":
             changed = {normalize_repo_path(item) for item in record["changed_paths"]}
+            review = {normalize_repo_path(item) for item in record["review_paths"]}
             excluded = {normalize_scope_reference(item) for item in record["explicit_exclusions"]}
-            overlap = sorted(changed & excluded)
-            if overlap:
-                raise ContractError(f"changed_paths overlap explicit_exclusions: {', '.join(overlap)}")
+            uncovered = sorted(path for path in changed if not _scope_contains(review, path))
+            if uncovered:
+                raise ContractError(f"changed_paths are not covered by review_paths: {', '.join(uncovered)}")
+            overlap = next(
+                (
+                    (review_path, excluded_path)
+                    for review_path in sorted(review)
+                    for excluded_path in sorted(excluded)
+                    if _path_scopes_overlap(review_path, excluded_path)
+                ),
+                None,
+            )
+            if overlap is not None:
+                review_path, excluded_path = overlap
+                raise ContractError(
+                    "review_paths overlap explicit_exclusions: "
+                    f"{review_path} <-> {excluded_path}"
+                )
+        elif kind == "focused_check":
+            if record["required"] and not record["covered_scope"]:
+                raise ContractError("required focused checks must declare covered_scope")
         elif kind == "task_spec":
-            if record["binding_mode"] != record["mode"]:
-                raise ContractError("binding_mode must match mode")
-            if record["mode"] == "portable" and record["binding_token"] is not None:
-                raise ContractError("portable TaskSpec must not carry a binding token")
+            if record["role"] != "implementer" and record["write_scope"]:
+                raise ContractError("non-implementer TaskSpec write_scope must be empty")
+            if record["mode"] == "portable":
+                if record["binding_mode"] != "transport_bound_provisional":
+                    raise ContractError("portable TaskSpec requires transport_bound_provisional binding")
+                if record["binding_token"] is not None:
+                    raise ContractError("portable TaskSpec must not carry a binding token")
+                if record["write_scope"]:
+                    raise ContractError("portable delegated TaskSpec write_scope must be empty")
+            elif record["binding_mode"] != "runtime_atomic":
+                raise ContractError("strict TaskSpec requires runtime_atomic binding")
+            if record["mode"] == "strict":
+                _require_real_identifier(record, "binding_token")
+            if record["role"] == "reviewer":
+                for field in (
+                    "invocation_id",
+                    "base_snapshot",
+                    "base_content_identity",
+                    "snapshot_id",
+                    "content_identity",
+                    "artifact_path",
+                    "artifact_access_proof",
+                    "review_coverage_proof",
+                ):
+                    _require_real_identifier(record, field)
+                review_paths = {normalize_repo_path(path) for path in record["impact_scope"]["review_paths"]}
+                read_scope = {normalize_repo_path(path) for path in record["read_scope"]}
+                if any(not _scope_contains(read_scope, path) for path in review_paths):
+                    raise ContractError("reviewer read_scope must include every impact_scope.review_paths entry")
         elif kind == "capability_preflight":
             mode = record["mode"]
             required = set(PORTABLE_CAPABILITIES if mode == "portable" else STRICT_CAPABILITIES)
             capabilities = record["capabilities"]
+            if set(capabilities) != required:
+                missing_keys = sorted(required - set(capabilities))
+                extra_keys = sorted(set(capabilities) - required)
+                raise ContractError(
+                    "capabilities must contain exactly the keys required for mode "
+                    f"(missing={missing_keys}, extra={extra_keys})"
+                )
             expected_missing = sorted(name for name in required if not capabilities[name])
             actual_missing = sorted(record["missing"])
             if actual_missing != expected_missing:
@@ -1055,7 +1208,7 @@ def validate_record(record: Any, kind: str) -> list[str]:
             if mode == "strict" and record["result"] == "STRICT_READY" and record["authority"] != "authoritative_runtime_record":
                 raise ContractError("strict preflight requires authoritative_runtime_record authority")
             if mode == "strict" and record["result"] == "STRICT_READY":
-                raise ContractError("strict readiness requires an authoritative runtime adapter")
+                raise ContractError("bundled tooling cannot attest STRICT_READY; validate with an authoritative runtime adapter")
         elif kind == "role_result":
             role = record["role"]
             status = record["status"]
@@ -1066,6 +1219,22 @@ def validate_record(record: Any, kind: str) -> list[str]:
                 allowed.add(CONTRACT["statuses"]["role_success"][role])
             if status not in allowed:
                 raise ContractError(f"record.status {status!r} is invalid for role {role!r}")
+            if role in {"researcher", "planner", "reviewer", "verifier"} and record["changed_paths"]:
+                raise ContractError(f"{role} results must report changed_paths=[]")
+            success_statuses = set(CONTRACT["statuses"]["role_success"].values()) | {"CLEAN", "FINDINGS"}
+            if status in success_statuses:
+                if not record["completed_scope"]:
+                    raise ContractError("successful role results require completed_scope")
+                if record["blocker_or_input"] is not None:
+                    raise ContractError("successful role results require blocker_or_input=null")
+            if status in {"NEEDS_INPUT", "NEEDS_USER_DECISION", "BLOCKED", "REVIEW_BLOCKED"} and record["blocker_or_input"] is None:
+                raise ContractError(f"{status} requires blocker_or_input")
+            review_only = {
+                "snapshot_id", "artifact_access_proof", "review_coverage_proof",
+                "reviewed_paths", "findings",
+            }
+            if role != "reviewer" and review_only & set(record):
+                raise ContractError("non-reviewer role results must not carry review-only fields")
             if status == "FINDINGS" and not record.get("findings"):
                 raise ContractError("reviewer FINDINGS requires at least one finding")
             if status == "FINDINGS" and not any(
@@ -1080,11 +1249,19 @@ def validate_record(record: Any, kind: str) -> list[str]:
                 for finding in record.get("findings", [])
             ):
                 raise ContractError("reviewer CLEAN cannot contain actionable findings")
+            if status == "CLEAN" and any(risk["status"] == "OPEN" for risk in record.get("risks", [])):
+                raise ContractError("reviewer CLEAN cannot contain open risks")
             if role == "reviewer" and status in {"CLEAN", "FINDINGS"}:
                 for field in (
                     "mode",
+                    "run_id",
+                    "task_id",
+                    "invocation_id",
+                    "report_id",
                     "base_snapshot",
                     "base_content_identity",
+                    "snapshot_id",
+                    "content_identity",
                     "artifact_access_proof",
                     "review_coverage_proof",
                 ):
@@ -1093,6 +1270,9 @@ def validate_record(record: Any, kind: str) -> list[str]:
                     raise ContractError("terminal reviewer results require at least one check")
                 if status == "CLEAN" and any(check["status"] != "PASSED" for check in record["checks"]):
                     raise ContractError("reviewer CLEAN requires only passed checks")
+                for finding in record.get("findings", []):
+                    if not _scope_contains(record["reviewed_paths"], finding["path"]):
+                        raise ContractError(f"finding path is outside reviewed_paths: {finding['path']}")
                 payload = record.get("role_payload")
                 if payload is not None and payload.get("mode") != record["mode"]:
                     raise ContractError("role_payload.mode must match role_result.mode")
@@ -1101,20 +1281,32 @@ def validate_record(record: Any, kind: str) -> list[str]:
             expected_mode = {"ACCEPTED_PORTABLE": "portable", "ACCEPTED_STRICT": "strict"}.get(outcome)
             if expected_mode and record["mode"] != expected_mode:
                 raise ContractError(f"{outcome} requires mode={expected_mode}")
-            expected_accepted = bool(
-                expected_mode
-                and record["review_status"] == "CLEAN"
-                and record["validation_status"] == "PASSED"
-            )
-            if record["accepted"] != expected_accepted:
-                raise ContractError("accepted must agree with outcome, CLEAN review, and passed validation")
-            if record["accepted"] and (record["snapshot_id"] is None or record["content_identity"] is None):
-                raise ContractError("accepted outcomes require snapshot_id and content_identity")
+            if outcome == "ACCEPTED_STRICT":
+                raise ContractError("bundled tooling cannot attest ACCEPTED_STRICT")
+            if expected_mode and (
+                record["accepted"] is not True
+                or record["review_status"] != "CLEAN"
+                or record["validation_status"] != "PASSED"
+            ):
+                raise ContractError(
+                    "accepted outcomes require accepted=true, CLEAN review, and passed validation"
+                )
+            if outcome == "NOT_ACCEPTED" and record["accepted"] is not False:
+                raise ContractError("NOT_ACCEPTED requires accepted=false")
             if record["accepted"]:
-                _require_real_identifier(record, "snapshot_id")
-                _require_real_identifier(record, "content_identity")
-            if not record["accepted"] and record["commit_requested"]:
-                raise ContractError("commit_requested requires accepted=true")
+                for field in (
+                    "snapshot_id", "content_identity", "capability_preflight_digest",
+                    "final_review_round_digest", "full_validation_check_id",
+                ):
+                    _require_real_identifier(record, field)
+                if not record["validation_checks"] or any(
+                    check["status"] != "PASSED" for check in record["validation_checks"]
+                ):
+                    raise ContractError("accepted outcomes require nonempty passed validation_checks")
+                if record["full_validation_check_id"] not in {
+                    check["id"] for check in record["validation_checks"]
+                }:
+                    raise ContractError("full_validation_check_id must identify a validation check")
             if outcome == "NOT_ACCEPTED" and record["reason"] is None:
                 raise ContractError("NOT_ACCEPTED requires a reason")
             if outcome != "NOT_ACCEPTED" and record["reason"] is not None:
@@ -1124,12 +1316,210 @@ def validate_record(record: Any, kind: str) -> list[str]:
                 for field, allowed in CONTRACT["statuses"]["not_accepted_reason_rules"].get(reason, {}).items():
                     if record[field] not in allowed:
                         raise ContractError(f"{reason} requires {field} in {allowed}")
-            if record["commit_id"] is not None and record["commit_id"] in SENTINELS:
-                raise ContractError("commit_id cannot use a sentinel")
-            if record["commit_id"] is not None and (not record["accepted"] or not record["commit_requested"]):
-                raise ContractError("commit_id requires accepted=true and commit_requested=true")
-            if outcome == "NOT_ACCEPTED" and record["commit_id"] is not None:
-                raise ContractError("NOT_ACCEPTED cannot carry a commit_id")
+            commit_status = record["commit_status"]
+            if commit_status == "NOT_REQUESTED":
+                if record["commit_requested"] or record["commit_id"] is not None or record["commit_blocker"] is not None:
+                    raise ContractError("NOT_REQUESTED requires no commit intent, id, or blocker")
+            elif commit_status == "PENDING":
+                if not record["commit_requested"] or not record["accepted"] or record["commit_id"] is not None or record["commit_blocker"] is not None:
+                    raise ContractError("PENDING requires accepted commit intent without an id or blocker")
+            elif commit_status == "CREATED":
+                if not record["commit_requested"] or not record["accepted"] or record["commit_blocker"] is not None:
+                    raise ContractError("CREATED requires accepted commit intent and no blocker")
+                _require_real_identifier(record, "commit_id")
+            elif commit_status == "BLOCKED":
+                if not record["commit_requested"] or record["commit_id"] is not None or record["commit_blocker"] is None:
+                    raise ContractError("BLOCKED requires commit intent, a blocker, and no commit id")
+        elif kind == "artifact_access_proof":
+            if record["snapshot_id"] != record["manifest_identity"]:
+                raise ContractError("snapshot_id must equal manifest_identity")
+            for field in ("proof_id", "base_snapshot", "base_content_identity"):
+                _require_real_identifier(record, field)
+        elif kind == "review_coverage_proof":
+            required_ids = set(record["required_check_ids"])
+            passed_ids = set(record["passed_check_ids"])
+            if not passed_ids.issuperset(required_ids):
+                raise ContractError("passed_check_ids must include every required_check_id")
+            if record["coverage_status"] == "COMPLETE" and not record["completed_scope"]:
+                raise ContractError("complete review coverage requires completed_scope")
+        elif kind == "review_round":
+            task = record["task_spec"]
+            result = record["review_result"]
+            artifact = record["artifact_access_proof"]
+            coverage = record["review_coverage_proof"]
+            if task["role"] != "reviewer" or result["role"] != "reviewer":
+                raise ContractError("review_round requires reviewer task and result records")
+            if record["round"] != coverage["round"]:
+                raise ContractError("review round numbers do not match")
+            for field in ("base_snapshot", "base_content_identity"):
+                values = (task[field], result[field], artifact[field])
+                if len(set(values)) != 1:
+                    raise ContractError(f"review round has inconsistent {field}")
+            for field in ("snapshot_id", "content_identity"):
+                values = (task[field], result[field], artifact[field], coverage[field])
+                if len(set(values)) != 1:
+                    raise ContractError(f"review round has inconsistent {field}")
+            if len({task["mode"], result["mode"], artifact["mode"]}) != 1:
+                raise ContractError("review round has inconsistent mode")
+            for field in ("run_id", "task_id", "invocation_id"):
+                if task[field] != result[field]:
+                    raise ContractError(f"review task/result {field} values do not match")
+            if task["artifact_access_proof"] != result["artifact_access_proof"] or task["artifact_access_proof"] != artifact["proof_id"]:
+                raise ContractError("artifact access proof identifiers do not match")
+            if task["review_coverage_proof"] != result["review_coverage_proof"] or task["review_coverage_proof"] != coverage["proof_id"]:
+                raise ContractError("review coverage proof identifiers do not match")
+            result_digest = digest_record(result, "role_result")
+            if artifact["reviewer_result_digest"] != result_digest or coverage["reviewer_result_digest"] != result_digest:
+                raise ContractError("reviewer_result_digest does not match review_result")
+            artifact_digest = digest_record(artifact, "artifact_access_proof")
+            if coverage["artifact_access_proof_digest"] != artifact_digest:
+                raise ContractError("artifact_access_proof_digest does not match artifact_access_proof")
+            scope_digest = digest_record(task["impact_scope"], "impact_scope")
+            if artifact["impact_scope_digest"] != scope_digest or coverage["impact_scope_digest"] != scope_digest:
+                raise ContractError("impact_scope_digest does not match task impact_scope")
+            expected_paths = {
+                normalize_repo_path(path) for path in task["impact_scope"]["review_paths"]
+            }
+            if {normalize_repo_path(path) for path in artifact["scope_paths"]} != expected_paths:
+                raise ContractError("artifact scope_paths do not match impact_scope.review_paths")
+            if {normalize_repo_path(path) for path in coverage["review_paths"]} != expected_paths:
+                raise ContractError("coverage review_paths do not match impact_scope.review_paths")
+            if {normalize_repo_path(path) for path in result["reviewed_paths"]} != expected_paths:
+                raise ContractError("review_result.reviewed_paths do not match impact_scope.review_paths")
+            if set(coverage["completed_scope"]) != set(result["completed_scope"]):
+                raise ContractError("coverage completed_scope does not match review_result.completed_scope")
+            required_checks = [check for check in task["focused_checks"] if check["required"]]
+            required_ids = {check["id"] for check in required_checks}
+            if set(coverage["required_check_ids"]) != required_ids:
+                raise ContractError("coverage required_check_ids do not match required focused checks")
+            review_paths = task["impact_scope"]["review_paths"]
+            for check in required_checks:
+                if not any(
+                    _path_scopes_overlap(covered, review_path)
+                    for covered in check["covered_scope"]
+                    for review_path in review_paths
+                ):
+                    raise ContractError(
+                        f"required focused check {check['id']} does not cover the review scope"
+                    )
+            uncovered_changed_paths = [
+                changed_path
+                for changed_path in task["impact_scope"]["changed_paths"]
+                if not any(
+                    _path_scope_contains(covered, changed_path)
+                    for check in required_checks
+                    for covered in check["covered_scope"]
+                )
+            ]
+            if uncovered_changed_paths:
+                raise ContractError(
+                    "required focused checks do not cover changed_paths: "
+                    + ", ".join(sorted(uncovered_changed_paths))
+                )
+            passed_ids = {check["id"] for check in result["checks"] if check["status"] == "PASSED"}
+            if set(coverage["passed_check_ids"]) != passed_ids:
+                raise ContractError("coverage passed_check_ids do not match passed reviewer checks")
+            if result["status"] == "CLEAN" and coverage["coverage_status"] != "COMPLETE":
+                raise ContractError("CLEAN review requires COMPLETE coverage")
+        elif kind == "acceptance_evidence":
+            preflight = record["capability_preflight"]
+            rounds = record["review_rounds"]
+            outcome = record["workflow_outcome"]
+            if len(rounds) > CONTRACT["limits"]["review_rounds"]:
+                raise ContractError("review round count exceeds the ContractV2 limit")
+            if [item["round"] for item in rounds] != list(range(1, len(rounds) + 1)):
+                raise ContractError("review rounds must be contiguous and begin at 1")
+            _require_unique_item_key(
+                [item["task_spec"] for item in rounds if item["task_spec"].get("invocation_id") is not None],
+                "invocation_id",
+                "review rounds",
+            )
+            _require_unique_item_key(
+                [item["review_result"] for item in rounds if item["review_result"].get("report_id") is not None],
+                "report_id",
+                "review rounds",
+            )
+            _require_unique_item_key(
+                [item["artifact_access_proof"] for item in rounds], "proof_id", "review rounds"
+            )
+            _require_unique_item_key(
+                [item["review_coverage_proof"] for item in rounds], "proof_id", "review rounds"
+            )
+            _require_unique_item_key(
+                [item["task_spec"] for item in rounds], "snapshot_id", "review rounds"
+            )
+            _require_unique_item_key(
+                [item["task_spec"] for item in rounds], "content_identity", "review rounds"
+            )
+            for index, current in enumerate(rounds):
+                coverage = current["review_coverage_proof"]
+                if current["task_spec"]["mode"] != preflight["mode"]:
+                    raise ContractError("review round mode does not match capability preflight")
+                if index == 0:
+                    if coverage["prior_reviewer_result_digest"] is not None or coverage["addressed_finding_ids"]:
+                        raise ContractError("the first review round cannot reference prior findings")
+                    continue
+                previous = rounds[index - 1]
+                previous_result = previous["review_result"]
+                for field in ("task_id", "run_id", "base_snapshot", "base_content_identity"):
+                    if current["task_spec"][field] != previous["task_spec"][field]:
+                        raise ContractError(f"review rounds have inconsistent {field}")
+                current_task = current["task_spec"]
+                previous_task = previous["task_spec"]
+                if current_task["objective"] != previous_task["objective"]:
+                    raise ContractError("review rounds cannot change the task objective")
+                if _acceptance_definitions(current_task) != _acceptance_definitions(previous_task):
+                    raise ContractError("review rounds cannot change acceptance-criterion definitions")
+                if _focused_check_definitions(current_task) != _focused_check_definitions(previous_task):
+                    raise ContractError("review rounds cannot change focused-check definitions")
+                if digest_record(current_task["impact_scope"], "impact_scope") != digest_record(
+                    previous_task["impact_scope"], "impact_scope"
+                ):
+                    raise ContractError("review rounds cannot change impact scope")
+                if previous_result["status"] != "FINDINGS":
+                    raise ContractError("only FINDINGS may be followed by another review round")
+                previous_digest = digest_record(previous_result, "role_result")
+                if coverage["prior_reviewer_result_digest"] != previous_digest:
+                    raise ContractError("review round does not bind the immediately preceding result")
+                finding_ids = {
+                    finding["id"] for finding in previous_result.get("findings", [])
+                    if finding["status"] in CONTRACT["statuses"]["actionable_finding_statuses"]
+                }
+                if set(coverage["addressed_finding_ids"]) != finding_ids:
+                    raise ContractError("review round must account for every preceding actionable finding")
+                if (
+                    current["review_result"]["snapshot_id"] == previous_result["snapshot_id"]
+                    or current["review_result"]["content_identity"] == previous_result["content_identity"]
+                ):
+                    raise ContractError("a findings fix requires a new snapshot and content identity")
+            if outcome["mode"] != preflight["mode"]:
+                raise ContractError("workflow outcome mode does not match capability preflight")
+            if outcome["accepted"]:
+                if outcome["mode"] == "strict":
+                    raise ContractError("bundled tooling cannot attest ACCEPTED_STRICT")
+                if preflight["result"] != "PORTABLE_READY":
+                    raise ContractError("portable acceptance requires PORTABLE_READY preflight")
+                final_round = rounds[-1]
+                final_result = final_round["review_result"]
+                final_artifact = final_round["artifact_access_proof"]
+                final_coverage = final_round["review_coverage_proof"]
+                if any(
+                    criterion["status"] != "met"
+                    for criterion in final_round["task_spec"]["acceptance_criteria"]
+                ):
+                    raise ContractError("accepted evidence requires every acceptance criterion to be met")
+                if final_result["status"] != "CLEAN":
+                    raise ContractError("accepted evidence requires a final CLEAN review")
+                if final_coverage["coverage_status"] != "COMPLETE":
+                    raise ContractError("accepted evidence requires complete final review coverage")
+                if final_artifact["artifact_verification_status"] != "PASSED" or final_artifact["workspace_compare_status"] != "PASSED":
+                    raise ContractError("accepted evidence requires passed artifact verification and workspace comparison")
+                if outcome["capability_preflight_digest"] != digest_record(preflight, "capability_preflight"):
+                    raise ContractError("capability_preflight_digest does not match preflight")
+                if outcome["final_review_round_digest"] != digest_record(final_round, "review_round"):
+                    raise ContractError("final_review_round_digest does not match final review round")
+                if outcome["snapshot_id"] != final_result["snapshot_id"] or outcome["content_identity"] != final_result["content_identity"]:
+                    raise ContractError("workflow outcome is not bound to the final reviewed snapshot")
         elif kind == "runtime_completion_event":
             _require_runtime_identity(record)
             if record["status"] != "completed" or record["result_delivery_confirmed"] != "yes":
@@ -1261,6 +1651,8 @@ def _canonicalize_value(value: Any, spec: dict[str, Any]) -> Any:
         return [_canonicalize_declared_object(item, nested_name) for item in value]
     if kind == "record":
         return canonicalize_record(value, spec["kind"])
+    if kind == "record_list":
+        return [canonicalize_record(item, spec["kind"]) for item in value]
     if kind == "focused_check_list":
         return [canonicalize_record(item, "focused_check") for item in value]
     if kind == "model_profile":

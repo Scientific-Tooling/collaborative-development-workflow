@@ -19,6 +19,7 @@ class ContractToolTests(unittest.TestCase):
         return {
             "version": "impact-scope-v2",
             "changed_paths": ["src/./main.py", "README.md"],
+            "review_paths": ["src/./main.py", "README.md", "tests/test_main.py"],
             "direct_callers": ["module:entry"],
             "direct_consumers": ["tests/test_main.py"],
             "mapped_tests_or_configuration": ["pyproject.toml"],
@@ -106,15 +107,15 @@ class ContractToolTests(unittest.TestCase):
             "task_id": "task-1",
             "parent_task_id": None,
             "run_id": "run-1",
-            "invocation_id": None,
+            "invocation_id": "invocation-1",
             "binding_token": None,
-            "binding_mode": "portable",
+            "binding_mode": "transport_bound_provisional",
             "role": "reviewer",
             "mode": "portable",
             "objective": "review",
             "depends_on": [],
             "acceptance_criteria": [{"criterion_id": "criterion-1", "status": "pending", "summary": "review"}],
-            "read_scope": ["src/main.py"],
+            "read_scope": ["README.md", "src/main.py", "tests/test_main.py"],
             "write_scope": [],
             "impact_scope": scope,
             "base_snapshot": "snapshot-1",
@@ -122,11 +123,17 @@ class ContractToolTests(unittest.TestCase):
             "focused_checks": [],
             "execution": "read-only",
             "isolation": "frozen-artifact",
-            "budget": "bounded",
+            "budget": {
+                "version": "execution-budget-v2",
+                "wall_clock_seconds": 600,
+                "max_turns": 8,
+                "max_output_bytes": 65536,
+            },
             "resumable": False,
             "model_profile": {"model": "unknown"},
             "full_suite_owner": "main",
-            "snapshot_id": "snapshot-1",
+            "snapshot_id": "a" * 64,
+            "content_identity": "b" * 64,
             "artifact_path": "/tmp/artifact",
             "artifact_access_proof": "proof-1",
             "review_coverage_proof": "coverage-1",
@@ -156,7 +163,7 @@ class ContractToolTests(unittest.TestCase):
             "version": "capability-preflight-v2",
             "mode": "portable",
             "result": "PORTABLE_READY",
-            "capabilities": {name: True for name in contract_tool.ALL_CAPABILITIES},
+            "capabilities": {name: True for name in contract_tool.PORTABLE_CAPABILITIES},
             "missing": [],
             "authority": "observed_tool_surface",
         }
@@ -168,9 +175,17 @@ class ContractToolTests(unittest.TestCase):
             "review_status": "CLEAN",
             "reason": None,
             "validation_status": "PASSED",
+            "capability_preflight_digest": "c" * 64,
+            "final_review_round_digest": "d" * 64,
+            "validation_checks": [
+                {"id": "full", "status": "PASSED", "summary": "suite passed"}
+            ],
+            "full_validation_check_id": "full",
             "commit_requested": False,
-            "snapshot_id": "snapshot-1",
-            "content_identity": "content-1",
+            "commit_status": "NOT_REQUESTED",
+            "commit_blocker": None,
+            "snapshot_id": "a" * 64,
+            "content_identity": "b" * 64,
             "commit_id": None,
         }
         focused = {
@@ -197,24 +212,444 @@ class ContractToolTests(unittest.TestCase):
             "context_handoff": handoff,
         }
 
+    def acceptance_evidence(self) -> dict:
+        records = self.golden_records()
+        task = copy.deepcopy(records["task_spec"])
+        task["acceptance_criteria"][0]["status"] = "met"
+        task["focused_checks"] = [copy.deepcopy(records["focused_check"])]
+        task["focused_checks"][0]["covered_scope"] = ["src/main.py", "README.md"]
+        result = self.role_result("reviewer", "CLEAN")
+        result.update(
+            {
+                "mode": "portable",
+                "run_id": task["run_id"],
+                "task_id": task["task_id"],
+                "invocation_id": task["invocation_id"],
+                "report_id": "report-1",
+                "base_snapshot": task["base_snapshot"],
+                "base_content_identity": task["base_content_identity"],
+                "snapshot_id": task["snapshot_id"],
+                "content_identity": task["content_identity"],
+                "artifact_access_proof": task["artifact_access_proof"],
+                "review_coverage_proof": task["review_coverage_proof"],
+                "reviewed_paths": ["README.md", "src/main.py", "tests/test_main.py"],
+                "findings": [],
+                "risks": [],
+            }
+        )
+        result_digest = contract_tool.digest_record(result, "role_result")
+        scope_digest = contract_tool.digest_record(task["impact_scope"], "impact_scope")
+        artifact = {
+            "version": "artifact-access-proof-v2",
+            "proof_id": task["artifact_access_proof"],
+            "mode": task["mode"],
+            "base_snapshot": task["base_snapshot"],
+            "base_content_identity": task["base_content_identity"],
+            "snapshot_id": task["snapshot_id"],
+            "manifest_identity": task["snapshot_id"],
+            "content_identity": task["content_identity"],
+            "impact_scope_digest": scope_digest,
+            "scope_paths": ["README.md", "src/main.py", "tests/test_main.py"],
+            "reviewer_result_digest": result_digest,
+            "artifact_verification_status": "PASSED",
+            "workspace_compare_status": "PASSED",
+        }
+        coverage = {
+            "version": "review-coverage-proof-v2",
+            "proof_id": task["review_coverage_proof"],
+            "round": 1,
+            "snapshot_id": task["snapshot_id"],
+            "content_identity": task["content_identity"],
+            "impact_scope_digest": scope_digest,
+            "artifact_access_proof_digest": contract_tool.digest_record(
+                artifact, "artifact_access_proof"
+            ),
+            "reviewer_result_digest": result_digest,
+            "review_paths": ["README.md", "src/main.py", "tests/test_main.py"],
+            "completed_scope": result["completed_scope"],
+            "required_check_ids": ["focused"],
+            "passed_check_ids": ["focused"],
+            "prior_reviewer_result_digest": None,
+            "addressed_finding_ids": [],
+            "coverage_status": "COMPLETE",
+        }
+        review_round = {
+            "version": "review-round-v2",
+            "round": 1,
+            "task_spec": task,
+            "review_result": result,
+            "artifact_access_proof": artifact,
+            "review_coverage_proof": coverage,
+        }
+        preflight = copy.deepcopy(records["capability_preflight"])
+        outcome = copy.deepcopy(records["workflow_outcome"])
+        outcome["capability_preflight_digest"] = contract_tool.digest_record(
+            preflight, "capability_preflight"
+        )
+        outcome["final_review_round_digest"] = contract_tool.digest_record(
+            review_round, "review_round"
+        )
+        return {
+            "version": "acceptance-evidence-v2",
+            "capability_preflight": preflight,
+            "review_rounds": [review_round],
+            "workflow_outcome": outcome,
+        }
+
+    def two_round_evidence(self) -> dict:
+        def rebind(review_round: dict) -> None:
+            task = review_round["task_spec"]
+            result = review_round["review_result"]
+            artifact = review_round["artifact_access_proof"]
+            coverage = review_round["review_coverage_proof"]
+            result_digest = contract_tool.digest_record(result, "role_result")
+            artifact.update(
+                proof_id=task["artifact_access_proof"],
+                snapshot_id=task["snapshot_id"],
+                manifest_identity=task["snapshot_id"],
+                content_identity=task["content_identity"],
+                reviewer_result_digest=result_digest,
+            )
+            coverage.update(
+                proof_id=task["review_coverage_proof"],
+                round=review_round["round"],
+                snapshot_id=task["snapshot_id"],
+                content_identity=task["content_identity"],
+                reviewer_result_digest=result_digest,
+                artifact_access_proof_digest=contract_tool.digest_record(
+                    artifact, "artifact_access_proof"
+                ),
+            )
+
+        evidence = self.acceptance_evidence()
+        first = evidence["review_rounds"][0]
+        first["review_result"].update(
+            status="FINDINGS",
+            findings=[
+                {
+                    "id": "finding-1",
+                    "severity": "HIGH",
+                    "status": "OPEN",
+                    "path": "src/main.py",
+                    "line": 1,
+                    "summary": "bug",
+                    "evidence": "observed",
+                    "impact": "wrong result",
+                    "fix": "repair",
+                }
+            ],
+        )
+        rebind(first)
+        second = copy.deepcopy(first)
+        second["round"] = 2
+        second["task_spec"].update(
+            invocation_id="invocation-2",
+            snapshot_id="c" * 64,
+            content_identity="d" * 64,
+            artifact_access_proof="proof-2",
+            review_coverage_proof="coverage-2",
+        )
+        second["review_result"].update(
+            invocation_id="invocation-2",
+            report_id="report-2",
+            status="CLEAN",
+            snapshot_id="c" * 64,
+            content_identity="d" * 64,
+            artifact_access_proof="proof-2",
+            review_coverage_proof="coverage-2",
+            findings=[],
+        )
+        second["review_coverage_proof"].update(
+            prior_reviewer_result_digest=contract_tool.digest_record(
+                first["review_result"], "role_result"
+            ),
+            addressed_finding_ids=["finding-1"],
+        )
+        rebind(second)
+        evidence["review_rounds"] = [first, second]
+        evidence["workflow_outcome"].update(
+            snapshot_id="c" * 64,
+            content_identity="d" * 64,
+            final_review_round_digest=contract_tool.digest_record(second, "review_round"),
+        )
+        return evidence
+
     def test_existing_record_digests_are_golden(self) -> None:
         expected = {
-            "impact_scope": "95cdeeb0517a03d348565a8fda2c99ca3e7c169728c040786b2ac909f3e5b9e9",
+            "impact_scope": "4ce5162032edabc332e71c84a22d4aafb684b01649d78d92dd67c110b7cf5edc",
             "focused_check": "2bb24f579713cd777c7a596e6e1bd30ca33e9f9ef15eaaa19eee02b84c4df85a",
-            "capability_preflight": "0168c0d6c66b4bff50aa1b977afa4e7e55c342be69d41e0a93670939c555cdec",
+            "capability_preflight": "cffd5cf2dc3876692c4bbb4a8d01ae75db6ab156877eb4381dd8bf920a4f6273",
             "role_result": "b37d64d311f784ca7cbea4681d92becb334cf1da0b3a7bcd561b10a2c12fb18b",
-            "workflow_outcome": "12b1cddb79a160f4d167303a09e30bdfc4ea8fbdf8e25f63ae04c07e29ab421c",
-            "task_spec": "c7a3da4dae9a974eac20383793f737ec6da8b261a391ef4d931b767f06599bb4",
+            "workflow_outcome": "fe281cc1bfd24a839e2c48c7ed9a6048c13ae37b3f11aa67d73df1a2b26df827",
+            "task_spec": "78ba6dc8d1feabb1025710e8d7654f74e2828c3efc25733c6aeb478a3febbb69",
             "runtime_completion_event": "35bf53446008f84a8ce8ba9cdadc849f16602dfa0071f300e879bd15f42d46b3",
             "runtime_terminal_event": "e2534b584bc4f0c2a34e14b49fc427a759fe7a3cc2f00319722ab09adb462d71",
             "runtime_stop_event": "4b7e7c6db8206befdb31bad2b79457ec0accf210b656f15e1cad6311bf14da3b",
             "runtime_event_sequence": "81db69007e02192f2368cb6d380b89373d486cdd2049b164814ec443313f7282",
-            "context_handoff": "146be8b4c7f0abe273fb61e0f0cb2e67ecf79af4c6c299c942b45f1765d8b254",
+            "context_handoff": "68507785858c9b34bf0495abd9fa23a02983899b418d222b369e87042dfd2c93",
         }
         records = self.golden_records()
         self.assertEqual(set(records), set(expected))
         for kind, record in records.items():
             self.assertEqual(contract_tool.digest_record(record, kind), expected[kind], kind)
+
+    def test_structured_acceptance_evidence_binds_every_record(self) -> None:
+        evidence = self.acceptance_evidence()
+        self.assertEqual(contract_tool.validate_record(evidence, "acceptance_evidence"), [])
+        for path, value in (
+            (("review_rounds", 0, "review_result", "content_identity"), "f" * 64),
+            (("review_rounds", 0, "artifact_access_proof", "scope_paths"), ["README.md"]),
+            (("review_rounds", 0, "review_coverage_proof", "passed_check_ids"), []),
+            (("review_rounds", 0, "review_coverage_proof", "content_identity"), "f" * 64),
+            (("workflow_outcome", "final_review_round_digest"), "0" * 64),
+        ):
+            tampered = copy.deepcopy(evidence)
+            target: object = tampered
+            for component in path[:-1]:
+                target = target[component]  # type: ignore[index]
+            target[path[-1]] = value  # type: ignore[index]
+            self.assertTrue(
+                contract_tool.validate_record(tampered, "acceptance_evidence"), path
+            )
+
+    def test_accepted_outcome_requires_acceptance_state(self) -> None:
+        outcome = copy.deepcopy(self.golden_records()["workflow_outcome"])
+        outcome.update(accepted=False, review_status="FINDINGS", validation_status="FAILED")
+        self.assertTrue(contract_tool.validate_record(outcome, "workflow_outcome"))
+
+    def test_accepted_evidence_requires_met_criteria_and_one_mode(self) -> None:
+        evidence = self.acceptance_evidence()
+        evidence["review_rounds"][0]["task_spec"]["acceptance_criteria"][0]["status"] = "blocked"
+        evidence["workflow_outcome"]["final_review_round_digest"] = contract_tool.digest_record(
+            evidence["review_rounds"][0], "review_round"
+        )
+        self.assertTrue(contract_tool.validate_record(evidence, "acceptance_evidence"))
+
+        task = copy.deepcopy(self.golden_records()["task_spec"])
+        task["acceptance_criteria"] = []
+        self.assertTrue(contract_tool.validate_record(task, "task_spec"))
+
+        evidence = self.acceptance_evidence()
+        review_round = evidence["review_rounds"][0]
+        review_round["task_spec"]["mode"] = "strict"
+        review_round["task_spec"]["binding_mode"] = "runtime_atomic"
+        review_round["task_spec"]["binding_token"] = "binding-1"
+        review_round["review_result"]["mode"] = "strict"
+        review_round["artifact_access_proof"]["mode"] = "strict"
+        result_digest = contract_tool.digest_record(review_round["review_result"], "role_result")
+        review_round["artifact_access_proof"]["reviewer_result_digest"] = result_digest
+        review_round["review_coverage_proof"]["reviewer_result_digest"] = result_digest
+        review_round["review_coverage_proof"]["artifact_access_proof_digest"] = contract_tool.digest_record(
+            review_round["artifact_access_proof"], "artifact_access_proof"
+        )
+        evidence["workflow_outcome"]["final_review_round_digest"] = contract_tool.digest_record(
+            review_round, "review_round"
+        )
+        self.assertTrue(contract_tool.validate_record(evidence, "acceptance_evidence"))
+
+    def test_semantic_identifiers_are_unique(self) -> None:
+        evidence = self.acceptance_evidence()
+        duplicate = copy.deepcopy(evidence["review_rounds"][0]["task_spec"]["focused_checks"][0])
+        duplicate["command_or_assertion"] = "different command"
+        evidence["review_rounds"][0]["task_spec"]["focused_checks"].append(duplicate)
+        self.assertTrue(contract_tool.validate_record(evidence, "acceptance_evidence"))
+
+        result = self.role_result()
+        result["checks"].append({"id": "focused", "status": "FAILED", "summary": "duplicate id"})
+        self.assertTrue(contract_tool.validate_record(result, "role_result"))
+
+    def test_required_checks_must_cover_changed_paths(self) -> None:
+        evidence = self.acceptance_evidence()
+        evidence["review_rounds"][0]["task_spec"]["focused_checks"][0]["covered_scope"] = [
+            "src/main.py/smaller-scope"
+        ]
+        self.assertTrue(contract_tool.validate_record(evidence, "acceptance_evidence"))
+
+    def test_review_rounds_cannot_replay_an_older_snapshot_identity(self) -> None:
+        def finding(identifier: str) -> dict:
+            return {
+                "id": identifier,
+                "severity": "HIGH",
+                "status": "OPEN",
+                "path": "src/main.py",
+                "line": 1,
+                "summary": "bug",
+                "evidence": "observed",
+                "impact": "wrong result",
+                "fix": "repair",
+            }
+
+        def rebind(review_round: dict) -> None:
+            task = review_round["task_spec"]
+            result = review_round["review_result"]
+            artifact = review_round["artifact_access_proof"]
+            coverage = review_round["review_coverage_proof"]
+            result_digest = contract_tool.digest_record(result, "role_result")
+            artifact.update(
+                proof_id=task["artifact_access_proof"],
+                snapshot_id=task["snapshot_id"],
+                manifest_identity=task["snapshot_id"],
+                content_identity=task["content_identity"],
+                reviewer_result_digest=result_digest,
+            )
+            coverage.update(
+                proof_id=task["review_coverage_proof"],
+                round=review_round["round"],
+                snapshot_id=task["snapshot_id"],
+                content_identity=task["content_identity"],
+                reviewer_result_digest=result_digest,
+                artifact_access_proof_digest=contract_tool.digest_record(
+                    artifact, "artifact_access_proof"
+                ),
+            )
+
+        evidence = self.acceptance_evidence()
+        first = evidence["review_rounds"][0]
+        first["review_result"].update(status="FINDINGS", findings=[finding("finding-1")])
+        rebind(first)
+
+        second = copy.deepcopy(first)
+        second["round"] = 2
+        second["task_spec"].update(
+            invocation_id="invocation-2",
+            snapshot_id="c" * 64,
+            content_identity="d" * 64,
+            artifact_access_proof="proof-2",
+            review_coverage_proof="coverage-2",
+        )
+        second["review_result"].update(
+            invocation_id="invocation-2",
+            report_id="report-2",
+            snapshot_id="c" * 64,
+            content_identity="d" * 64,
+            artifact_access_proof="proof-2",
+            review_coverage_proof="coverage-2",
+            findings=[finding("finding-2")],
+        )
+        second["review_coverage_proof"].update(
+            prior_reviewer_result_digest=contract_tool.digest_record(
+                first["review_result"], "role_result"
+            ),
+            addressed_finding_ids=["finding-1"],
+        )
+        rebind(second)
+
+        third = copy.deepcopy(second)
+        third["round"] = 3
+        third["task_spec"].update(
+            invocation_id="invocation-3",
+            snapshot_id="a" * 64,
+            content_identity="b" * 64,
+            artifact_access_proof="proof-3",
+            review_coverage_proof="coverage-3",
+        )
+        third["review_result"].update(
+            invocation_id="invocation-3",
+            report_id="report-3",
+            status="CLEAN",
+            snapshot_id="a" * 64,
+            content_identity="b" * 64,
+            artifact_access_proof="proof-3",
+            review_coverage_proof="coverage-3",
+            findings=[],
+        )
+        third["review_coverage_proof"].update(
+            prior_reviewer_result_digest=contract_tool.digest_record(
+                second["review_result"], "role_result"
+            ),
+            addressed_finding_ids=["finding-2"],
+        )
+        rebind(third)
+        evidence["review_rounds"] = [first, second, third]
+        evidence["workflow_outcome"].update(
+            snapshot_id="a" * 64,
+            content_identity="b" * 64,
+            final_review_round_digest=contract_tool.digest_record(third, "review_round"),
+        )
+        self.assertTrue(contract_tool.validate_record(evidence, "acceptance_evidence"))
+
+    def test_review_rounds_cannot_rewrite_task_semantics_or_scope(self) -> None:
+        evidence = self.two_round_evidence()
+        self.assertEqual(contract_tool.validate_record(evidence, "acceptance_evidence"), [])
+        second = evidence["review_rounds"][1]
+        task = second["task_spec"]
+        result = second["review_result"]
+        artifact = second["artifact_access_proof"]
+        coverage = second["review_coverage_proof"]
+        narrowed_scope = {
+            "version": "impact-scope-v2",
+            "changed_paths": [],
+            "review_paths": ["unrelated.txt"],
+            "direct_callers": [],
+            "direct_consumers": [],
+            "mapped_tests_or_configuration": [],
+            "explicit_exclusions": [],
+        }
+        task.update(
+            impact_scope=narrowed_scope,
+            read_scope=["unrelated.txt"],
+        )
+        task["focused_checks"][0]["covered_scope"] = ["unrelated.txt"]
+        result.update(completed_scope=["unrelated.txt"], reviewed_paths=["unrelated.txt"])
+        result_digest = contract_tool.digest_record(result, "role_result")
+        scope_digest = contract_tool.digest_record(narrowed_scope, "impact_scope")
+        artifact.update(
+            impact_scope_digest=scope_digest,
+            scope_paths=["unrelated.txt"],
+            reviewer_result_digest=result_digest,
+        )
+        coverage.update(
+            impact_scope_digest=scope_digest,
+            artifact_access_proof_digest=contract_tool.digest_record(
+                artifact, "artifact_access_proof"
+            ),
+            reviewer_result_digest=result_digest,
+            review_paths=["unrelated.txt"],
+            completed_scope=["unrelated.txt"],
+        )
+        evidence["workflow_outcome"]["final_review_round_digest"] = contract_tool.digest_record(
+            second, "review_round"
+        )
+        self.assertTrue(contract_tool.validate_record(evidence, "acceptance_evidence"))
+
+        for field, replacement in (
+            ("objective", "rewritten objective"),
+            ("acceptance_criteria", [{"criterion_id": "criterion-1", "status": "met", "summary": "rewritten"}]),
+        ):
+            changed = self.two_round_evidence()
+            changed_round = changed["review_rounds"][1]
+            changed_round["task_spec"][field] = replacement
+            changed["workflow_outcome"]["final_review_round_digest"] = contract_tool.digest_record(
+                changed_round, "review_round"
+            )
+            self.assertTrue(contract_tool.validate_record(changed, "acceptance_evidence"), field)
+
+        changed = self.two_round_evidence()
+        changed_round = changed["review_rounds"][1]
+        changed_round["task_spec"]["focused_checks"][0][
+            "command_or_assertion"
+        ] = "rewritten check"
+        changed["workflow_outcome"]["final_review_round_digest"] = contract_tool.digest_record(
+            changed_round, "review_round"
+        )
+        self.assertTrue(contract_tool.validate_record(changed, "acceptance_evidence"))
+
+    def test_portable_capability_maps_are_mode_specific(self) -> None:
+        portable = copy.deepcopy(self.golden_records()["capability_preflight"])
+        self.assertEqual(contract_tool.validate_record(portable, "capability_preflight"), [])
+        portable["capabilities"]["cas_state"] = False
+        self.assertTrue(contract_tool.validate_record(portable, "capability_preflight"))
+        del portable["capabilities"]["cas_state"]
+        del portable["capabilities"]["shared_snapshot_access"]
+        self.assertTrue(contract_tool.validate_record(portable, "capability_preflight"))
+
+    def test_read_only_write_scope_and_required_check_coverage_fail_closed(self) -> None:
+        task = copy.deepcopy(self.golden_records()["task_spec"])
+        task["write_scope"] = ["src/main.py"]
+        self.assertTrue(contract_tool.validate_record(task, "task_spec"))
+        focused = copy.deepcopy(self.golden_records()["focused_check"])
+        focused["covered_scope"] = []
+        self.assertTrue(contract_tool.validate_record(focused, "focused_check"))
 
     def test_canonicalization_normalizes_and_sorts_set_like_paths(self) -> None:
         first = self.impact_scope()
@@ -377,6 +812,22 @@ class ContractToolTests(unittest.TestCase):
         absolute["changed_paths"] = ["/tmp/secret"]
         self.assertTrue(contract_tool.validate_record(absolute, "impact_scope"))
 
+    def test_review_paths_and_explicit_exclusions_cannot_overlap_by_ancestry(self) -> None:
+        for review_path, excluded_path in (
+            ("src", "src/secret.txt"),
+            ("src/secret.txt", "src"),
+            ("src/secret.txt", "src/secret.txt"),
+        ):
+            with self.subTest(review_path=review_path, excluded_path=excluded_path):
+                record = self.impact_scope()
+                record["changed_paths"] = []
+                record["review_paths"] = [review_path]
+                record["explicit_exclusions"] = [excluded_path]
+                errors = contract_tool.validate_record(record, "impact_scope")
+                self.assertTrue(
+                    any("review_paths overlap explicit_exclusions" in error for error in errors)
+                )
+
     def test_duplicate_keys_and_non_finite_numbers_are_rejected(self) -> None:
         with self.assertRaises(contract_tool.ContractError):
             contract_tool.load_json_bytes(b'{"version":"impact-scope-v2","version":"again"}')
@@ -407,6 +858,7 @@ class ContractToolTests(unittest.TestCase):
             result = self.role_result(role, success)
             self.assertEqual(contract_tool.validate_record(result, "role_result"), [])
             result["status"] = "BLOCKED"
+            result["blocker_or_input"] = "bounded blocker"
             self.assertEqual(contract_tool.validate_record(result, "role_result"), [])
 
     def test_capability_preflight_cannot_claim_unavailable_strict_mode(self) -> None:
@@ -570,7 +1022,7 @@ class ContractToolTests(unittest.TestCase):
         self.assertTrue(contract_tool.validate_record(result, "role_result"))
 
         unavailable = self.role_result("reviewer", "REVIEW_UNAVAILABLE")
-        self.assertEqual(contract_tool.validate_record(unavailable, "role_result"), [])
+        self.assertTrue(contract_tool.validate_record(unavailable, "role_result"))
 
     def test_findings_and_clean_have_required_review_payloads(self) -> None:
         findings = self.role_result("reviewer", "FINDINGS")
@@ -590,8 +1042,14 @@ class ContractToolTests(unittest.TestCase):
         findings.update(
             {
                 "mode": "portable",
+                "run_id": "run-1",
+                "task_id": "task-1",
+                "invocation_id": "invocation-1",
+                "report_id": "report-1",
                 "base_snapshot": "snapshot-1",
                 "base_content_identity": "content-1",
+                "snapshot_id": "a" * 64,
+                "content_identity": "b" * 64,
                 "artifact_access_proof": "artifact-proof-1",
                 "review_coverage_proof": "coverage-proof-1",
                 "reviewed_paths": ["src/main.py"],
@@ -605,13 +1063,20 @@ class ContractToolTests(unittest.TestCase):
         clean.update(
             {
                 "mode": "portable",
+                "run_id": "run-1",
+                "task_id": "task-1",
+                "invocation_id": "invocation-1",
+                "report_id": "report-1",
                 "base_snapshot": "snapshot-1",
                 "base_content_identity": "content-1",
+                "snapshot_id": "a" * 64,
+                "content_identity": "b" * 64,
                 "artifact_access_proof": "artifact-proof-1",
                 "review_coverage_proof": "coverage-proof-1",
             }
         )
         clean["reviewed_paths"] = ["src/main.py"]
+        clean["risks"] = []
         clean["findings"] = [dict(finding, status="OPEN")]
         self.assertTrue(contract_tool.validate_record(clean, "role_result"))
         clean["findings"] = [dict(finding, status="ADDRESSED", path="src/./main.py")]
@@ -623,59 +1088,45 @@ class ContractToolTests(unittest.TestCase):
         self.assertEqual(canonical["findings"][0]["path"], "src/main.py")
 
     def test_workflow_outcome_requires_consistent_acceptance(self) -> None:
-        accepted = {
-            "version": "workflow-outcome-v2",
-            "mode": "portable",
-            "outcome": "ACCEPTED_PORTABLE",
-            "accepted": True,
-            "review_status": "CLEAN",
-            "reason": None,
-            "validation_status": "PASSED",
-            "commit_requested": False,
-            "snapshot_id": "snapshot-1",
-            "content_identity": "content-1",
-            "commit_id": None,
-        }
+        accepted = copy.deepcopy(self.golden_records()["workflow_outcome"])
         self.assertEqual(contract_tool.validate_record(accepted, "workflow_outcome"), [])
         accepted["snapshot_id"] = None
         self.assertTrue(contract_tool.validate_record(accepted, "workflow_outcome"))
-        accepted["snapshot_id"] = "snapshot-1"
+        accepted["snapshot_id"] = "a" * 64
         accepted["snapshot_id"] = "NONE"
         accepted["content_identity"] = "UNKNOWN"
         self.assertTrue(contract_tool.validate_record(accepted, "workflow_outcome"))
-        accepted["snapshot_id"] = "snapshot-1"
-        accepted["content_identity"] = "content-1"
+        accepted["snapshot_id"] = "a" * 64
+        accepted["content_identity"] = "b" * 64
         accepted["accepted"] = False
         self.assertTrue(contract_tool.validate_record(accepted, "workflow_outcome"))
 
-        unavailable = dict(accepted)
+        unavailable = copy.deepcopy(self.golden_records()["workflow_outcome"])
         unavailable.update(
             {
                 "outcome": "NOT_ACCEPTED",
-                "review_status": "CLEAN",
+                "accepted": False,
+                "review_status": "REVIEW_UNAVAILABLE",
                 "reason": "REVIEW_UNAVAILABLE",
+                "validation_status": "NOT_RUN",
+                "capability_preflight_digest": None,
+                "final_review_round_digest": None,
+                "validation_checks": [],
+                "full_validation_check_id": None,
+                "snapshot_id": None,
+                "content_identity": None,
             }
         )
-        self.assertTrue(contract_tool.validate_record(unavailable, "workflow_outcome"))
+        self.assertEqual(contract_tool.validate_record(unavailable, "workflow_outcome"), [])
         unavailable["commit_requested"] = True
         self.assertTrue(contract_tool.validate_record(unavailable, "workflow_outcome"))
 
     def test_workflow_reason_and_commit_metadata_are_cross_checked(self) -> None:
-        accepted = {
-            "version": "workflow-outcome-v2",
-            "mode": "portable",
-            "outcome": "ACCEPTED_PORTABLE",
-            "accepted": True,
-            "review_status": "CLEAN",
-            "reason": None,
-            "validation_status": "PASSED",
-            "commit_requested": False,
-            "snapshot_id": "snapshot-1",
-            "content_identity": "content-1",
-            "commit_id": "commit-1",
-        }
+        accepted = copy.deepcopy(self.golden_records()["workflow_outcome"])
+        accepted["commit_id"] = "commit-1"
         self.assertTrue(contract_tool.validate_record(accepted, "workflow_outcome"))
         accepted["commit_requested"] = True
+        accepted["commit_status"] = "CREATED"
         self.assertEqual(contract_tool.validate_record(accepted, "workflow_outcome"), [])
 
         strict_reason = dict(accepted)
@@ -687,7 +1138,15 @@ class ContractToolTests(unittest.TestCase):
                 "review_status": "REVIEW_BLOCKED",
                 "reason": "STRICT_CAPABILITY_MISSING",
                 "commit_requested": False,
+                "commit_status": "NOT_REQUESTED",
+                "commit_blocker": None,
                 "commit_id": None,
+                "capability_preflight_digest": None,
+                "final_review_round_digest": None,
+                "validation_checks": [],
+                "full_validation_check_id": None,
+                "snapshot_id": None,
+                "content_identity": None,
             }
         )
         self.assertTrue(contract_tool.validate_record(strict_reason, "workflow_outcome"))
@@ -816,40 +1275,9 @@ class ContractToolTests(unittest.TestCase):
         self.assertTrue(contract_tool.validate_record(common, "context_handoff"))
 
     def test_task_spec_is_closed_and_binding_mode_matches(self) -> None:
-        task = {
-            "version": "task-spec-v2",
-            "task_id": "task-1",
-            "parent_task_id": None,
-            "run_id": "run-1",
-            "invocation_id": None,
-            "binding_token": None,
-            "binding_mode": "portable",
-            "role": "reviewer",
-            "mode": "portable",
-            "objective": "review the bounded artifact",
-            "depends_on": [],
-            "acceptance_criteria": [
-                {"criterion_id": "criterion-1", "status": "pending", "summary": "review"}
-            ],
-            "read_scope": ["src/main.py"],
-            "write_scope": [],
-            "impact_scope": self.impact_scope(),
-            "base_snapshot": "snapshot-1",
-            "base_content_identity": "content-1",
-            "focused_checks": [],
-            "execution": "read-only",
-            "isolation": "frozen-artifact",
-            "budget": "bounded",
-            "resumable": False,
-            "model_profile": {"model": "unknown"},
-            "full_suite_owner": "main",
-            "snapshot_id": "snapshot-1",
-            "artifact_path": "/tmp/artifact",
-            "artifact_access_proof": "proof-1",
-            "review_coverage_proof": "coverage-1",
-        }
+        task = copy.deepcopy(self.golden_records()["task_spec"])
         self.assertEqual(contract_tool.validate_record(task, "task_spec"), [])
-        task["binding_mode"] = "strict"
+        task["binding_mode"] = "runtime_atomic"
         self.assertTrue(contract_tool.validate_record(task, "task_spec"))
 
     def test_templates_use_v2_roles_and_do_not_redeclare_statuses(self) -> None:

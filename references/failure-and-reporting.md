@@ -43,7 +43,7 @@ Report:
 - implementation milestones and any delegated roles;
 - snapshot/content identity, reviewer result, and revision rounds;
 - focused and full validation commands with outcomes;
-- workflow outcome and exact reason if not accepted;
+- acceptance-evidence digest, workflow outcome, and exact reason if not accepted;
 - local commit only if explicitly requested and actually created; and
 - remaining risks, caveats, user decisions, or authorization still needed.
 
@@ -51,3 +51,7 @@ If acceptance is blocked, state the exact missing reviewer result, identity, art
 coverage proof, strict capability, validation, stop confirmation, or user decision.
 Do not present validated-but-unaccepted work as complete, independently reviewed, or
 commit-ready.
+
+Keep commit intent truthful when acceptance is blocked: use `commit_status=BLOCKED`
+with a bounded reason when the user requested a commit, rather than rewriting
+`commit_requested` to false.

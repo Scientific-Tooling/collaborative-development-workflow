@@ -1,0 +1,13 @@
+{
+  "version": "impact-scope-v2",
+  "changed_paths": ["scripts/contract_tool.py"],
+  "review_paths": [
+    "references/contracts-v2.json",
+    "scripts/contract_tool.py",
+    "tests/test_contract_tool.py"
+  ],
+  "direct_callers": ["scripts/snapshot_tool.py"],
+  "direct_consumers": ["SKILL.md", "references/task-contracts.md"],
+  "mapped_tests_or_configuration": ["tests/test_contract_tool.py"],
+  "explicit_exclusions": ["LICENSE"]
+}

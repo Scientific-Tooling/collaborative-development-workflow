@@ -19,7 +19,7 @@ These operations have different identities and authority:
 | Independent task | only the new request and bounded new manifest | new TaskSpec/task identity; no old checkpoint or active work | parent scope and permissions |
 | Continuation | validated checkpoint, artifact/content identity, risks, next action | same task and scope; preserve runtime state | parent/runtime validation |
 | Strict reviewer replacement | no handoff mode; use strict recovery | same snapshot and fixed budget; new invocation only after authoritative stop | strict runtime recovery |
-| Fresh review round | no handoff mode; use new review procedure | new run/set, snapshot, budget, and channel | explicit user authorization |
+| Fresh review round | no handoff mode; use review recovery | new snapshot/content identities and reviewer invocation | existing task authority; user decision only at the bounded-round or scope gate |
 
 If the user asks to start a relatively fresh and independent task while the current
 context is nearly full, do not copy the old conversation or continuation handoff
@@ -65,7 +65,7 @@ ContextHandoffV2 = {
   accepted_plan: bounded plan steps,
   baseline: { branch, head, status_digest },
   scope: ImpactScopeV2,
-  acceptance_criteria: bounded criteria,
+  acceptance_criteria: 1..32 bounded criteria,
   focused_checks: FocusedCheckV2[],
   checkpoint: bounded checkpoint | null,
   artifacts: bounded artifact metadata[],
@@ -95,13 +95,13 @@ portable shell pattern; the skill does not require a particular temp root. After
 handoff, keep the record immutable; if it changes, discard the expected digest and
 block or recapture the handoff.
 
+First create the bounded JSON through the host's approved file-writing mechanism;
+only then set owner-only permissions and validate it. The repository example can be
+validated independently with an executable command:
+
 ```bash
-handoff_dir="$(mktemp -d "${TMPDIR:-/tmp}/cdw-handoff-XXXXXX")"
-handoff_path="$handoff_dir/context-handoff.json"
-# write the bounded ContextHandoffV2 JSON to "$handoff_path"
-chmod 600 "$handoff_path"
-python3 scripts/contract_tool.py validate \
-  --kind context_handoff "$handoff_path"
+python3 scripts/contract_tool.py validate --kind context_handoff \
+  examples/context_handoff.json
 ```
 
 Compute and record the helper's digest outside the handoff if the next session

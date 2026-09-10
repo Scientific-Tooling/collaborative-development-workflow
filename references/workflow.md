@@ -38,7 +38,7 @@ accepted plan records:
 - exact or likely paths and the V2 impact scope;
 - dependencies, milestones, write ownership, mode, isolation, and integration order;
 - focused checks, validation owner, exclusions, risks, and material decisions; and
-- one prescribed full-validation command deferred to the final acceptance point.
+- one prescribed full-validation command and its main-agent owner.
 
 A delegated planner returns a ContractV2 role result. Treat it as evidence, not as
 authority to expand scope. Pause at the planning gate for an unanswered user
@@ -59,20 +59,22 @@ For a large change, integrate one coherent milestone at a time and create a new
 integrated identity before review. Do not let a child worktree or a moving workspace
 become the review input.
 
-## 4. Freeze and review
+## 4. Validate, freeze, and review
 
-After implementation and focused checks:
+After implementation:
 
-1. perform a cheap pre-freeze self-check;
-2. freeze exactly the V2 impact paths with `snapshot_tool.py` outside the repository;
-3. run `snapshot_tool.py verify` and record its content/manifest identities;
-4. pause all writers and main-agent edits; and
-5. start one fresh, read-only reviewer context for the exact artifact, using
+1. run every required focused check and the repository-prescribed full validation;
+2. inspect the resulting diff/status and remove only task-created disposable output;
+3. freeze exactly `ImpactScopeV2.review_paths` with `snapshot_tool.py` outside the repository;
+4. record the emitted content and manifest identities, then run `verify` with both
+   values as expected-identity arguments;
+5. pause all writers and main-agent edits; and
+6. start one fresh, read-only reviewer context for the exact artifact, using
    `fork_context=false` when the runtime exposes that option.
 
-Use one integrated reviewer for a small scope. Use a fixed review set only when the
-scope is broad enough for disjoint obligation lanes, and choose the mapping before
-freeze. A reviewer sees the request, accepted plan, baseline, exact scope,
+ContractV2 acceptance currently supports one integrated reviewer. Review-lane
+aggregation is not a public record shape and must not be used to claim acceptance.
+A reviewer sees the request, accepted plan, baseline, exact scope,
 exclusions, focused checks, artifact identity, and named risk-bearing consumers—no
 unbounded conversation or live workspace.
 
@@ -86,8 +88,8 @@ references.
 
 For a validated `FINDINGS` result, follow [`review-recovery.md`](review-recovery.md),
 which owns the portable revision procedure. Every content-changing fix requires a
-new snapshot and review identity; a fixed review set reruns every lane and rebuilds
-aggregate coverage, while no old lane or `CLEAN` result transfers. Ordinary
+new snapshot and review identity and complete integrated review coverage; no old
+coverage or `CLEAN` result transfers. Ordinary
 findings-driven rounds do not need new user authorization; the bounded round limit
 and user-decision gates are defined in that reference.
 
@@ -100,23 +102,29 @@ allowed only after the authoritative stop confirmation specified in
 
 ## 6. Independent acceptance
 
-At the final acceptance point the main agent:
+After the reviewer returns, the main agent performs only read-only acceptance work:
 
 1. inspects the complete task diff, status, staged boundary, and generated/secrets/
    debug changes while keeping substantive scope review bounded;
-2. verifies each acceptance criterion, exclusion, snapshot identity, and coverage
-   obligation;
-3. runs all relevant focused checks;
-4. runs the repository-prescribed full validation once, last; and
-5. runs `snapshot_tool.py compare` to recheck the final workspace against the exact
-   reviewed artifact.
+2. validates the reviewer result, structured proof records, required-check coverage,
+   and previously recorded full-validation result;
+3. runs `snapshot_tool.py compare` with both expected identities to recheck the
+   final workspace against the exact reviewed artifact; and
+4. validates the complete `acceptance-evidence-v2` bundle.
+
+Do not run a mutating formatter, generator, or test after the snapshot is frozen.
+If any post-freeze operation changes scoped content or Git identity, invalidate the
+review, rerun validation, and freeze a replacement snapshot.
 
 Produce `ACCEPTED_PORTABLE` only when the independent portable review is usable,
 scope/artifact/workspace identities match, required checks pass, and full validation
-passes. Produce `ACCEPTED_STRICT` only when the same conditions plus all strict
-runtime proofs pass. Otherwise produce `NOT_ACCEPTED` with the precise V2 reason.
+passes, and every final acceptance criterion is `met`. Required focused checks must
+collectively cover all changed paths, not merely reuse a passing check ID. The
+bundled validator cannot produce `ACCEPTED_STRICT`; an external
+authoritative runtime adapter must validate the same evidence plus all strict
+runtime proofs. Otherwise produce `NOT_ACCEPTED` with the precise V2 reason.
 
-A failed validation, missing proof, user decision, quarantine, blocked lane,
+A failed validation, missing proof, user decision, quarantine, incomplete coverage,
 identity mismatch, or changed scope invalidates acceptance and requires a targeted
 fix plus a new review identity.
 
@@ -125,6 +133,10 @@ fix plus a new review identity.
 A local commit is an explicit user-authorized operation, not a default workflow
 outcome. It is permitted only after acceptance and only when the baseline index was
 clean and no pre-existing edit overlaps an explicit task path.
+
+Record intent separately from lifecycle: `NOT_REQUESTED`, `PENDING`, `CREATED`, or
+`BLOCKED`. A non-accepted workflow may preserve explicit user intent as `BLOCKED`
+with a reason; it must not rewrite that intent to false.
 
 When those conditions hold:
 

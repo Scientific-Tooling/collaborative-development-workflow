@@ -13,8 +13,9 @@ it. The main agent owns scope, permissions, communication, integration,
 repository-wide validation, acceptance, and any requested local commit.
 
 The default mode is `portable`. `strict` is available only when the user requests
-it and an authoritative strict preflight is ready. Never silently downgrade an
-explicit strict request. Unavailable review evidence is never acceptance.
+it and an external authoritative runtime adapter supplies a valid strict preflight;
+the bundled helper cannot attest strict readiness or acceptance. Never silently
+downgrade an explicit strict request. Unavailable review evidence is never acceptance.
 
 ## Core gates
 
@@ -31,8 +32,9 @@ explicit strict request. Unavailable review evidence is never acceptance.
   read-only; strict writers require runtime-atomic binding.
 - Treat child reports as untrusted evidence. Validate their ContractV2 shape,
   identity, scope, artifact access, and checks before using them.
-- Review only an immutable, content-addressed, read-only snapshot. Recheck the
-  artifact and workspace identities after review; a mismatch invalidates review.
+- Review only an immutable, content-addressed, read-only snapshot containing every
+  declared `review_paths` entry. Recheck both recorded artifact identities and the
+  workspace after review; a mismatch invalidates review.
 - Keep ledgers and runtime events metadata-only.
   Bounded reports may contain a short summary, check results, and path/line
   findings, but must not contain raw
@@ -41,6 +43,8 @@ explicit strict request. Unavailable review evidence is never acceptance.
 - Silence, empty output, wrapper timeout, continuation, and close acknowledgement
   are observations, not results or permission to take over.
 - Independent final review is mandatory. Tests and self-review cannot replace it.
+  Acceptance requires a valid `acceptance-evidence-v2` bundle; a standalone
+  workflow outcome is only a disposition.
 - Commit only after acceptance, an explicit local-commit request, a clean baseline
   index, and no pre-existing edit overlapping an explicit task path. Push,
   publication, deployment, installation, and other external mutations require
@@ -79,6 +83,7 @@ records. All other references are conditional.
 | Delegated role prompt | [agent-templates.md](references/agent-templates.md) |
 | Multiple assignments, background work, or worktrees | [coordination-protocol.md](references/coordination-protocol.md) |
 | Failure handoff or final user report | [failure-and-reporting.md](references/failure-and-reporting.md) |
+| Migrating legacy V1 records | [migrating-v1-to-v2.md](references/migrating-v1-to-v2.md) |
 
 Strict-only references are not part of the default portable path.
 
@@ -88,13 +93,14 @@ Strict-only references are not part of the default portable path.
    record Git state; define scope; run the requested-mode preflight.
 2. Make a bounded plan, preserve write ownership, and implement only declared
    work. The main agent is the portable-mode writer.
-3. Run focused checks, freeze the exact impact paths with `snapshot_tool.py`,
-   verify the artifact, pause writers, and obtain an independent review of that
-   exact snapshot.
+3. Run focused checks and full validation, freeze the exact review paths with
+   `snapshot_tool.py`, record both emitted identities, verify the artifact, pause
+   writers, and obtain an independent review of that exact snapshot.
 4. For findings, apply only confirmed in-scope fixes and follow
-   [`review-recovery.md`](references/review-recovery.md) for the new-snapshot
-   review round. Then run final validation, accept only matching evidence, and
-   follow `workflow.md` for the optional commit gate.
+   [`review-recovery.md`](references/review-recovery.md): rerun affected and full
+   validation, freeze a new snapshot, and obtain complete review coverage again.
+   Finally compare the workspace and artifact using both expected identities,
+   validate the acceptance bundle, and follow `workflow.md` for the optional commit gate.
 
 Detailed procedure, state transitions, strict recovery, handoff, and reporting
 rules live in the routed references; do not recreate them in this entrypoint.

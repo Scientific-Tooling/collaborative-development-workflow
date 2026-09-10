@@ -13,27 +13,22 @@ by the V2 helpers. A record must not mix versions.
 Create one bounded task specification before every delegation. Keep it in the
 parent plan or runtime ledger; a child never infers missing scope from the
 repository. The machine-readable record kind is `task_spec`; validate it with
-`contract_tool.py` before delegation.
+`contract_tool.py` before delegation. Query the effective closed shape instead of
+copying a field inventory into a prompt:
 
-```text
-TASK_ID, PARENT_TASK_ID, RUN_ID
-INVOCATION_ID, BINDING_TOKEN, BINDING_MODE
-ROLE: researcher | planner | implementer | reviewer | verifier
-MODE: portable | strict
-OBJECTIVE, DEPENDS_ON, ACCEPTANCE_CRITERIA
-READ_SCOPE, WRITE_SCOPE, IMPACT_SCOPE, BASE_SNAPSHOT, BASE_CONTENT_IDENTITY
-FOCUSED_CHECKS, EXECUTION, ISOLATION, BUDGET, RESUMABLE
-MODEL_PROFILE: actual model/effort when exposed, otherwise UNKNOWN
-FULL_SUITE_OWNER: main
-SNAPSHOT: snapshot_id, artifact_path, content_identity
-ARTIFACT_ACCESS_PROOF, REVIEW_COVERAGE_PROOF
-TIMING, RECOVERY: strict runtime fields only when strict is available
+```bash
+python3 scripts/contract_tool.py describe --kind task_spec
+python3 scripts/contract_tool.py validate --kind acceptance_evidence \
+  examples/acceptance_evidence.json
 ```
 
-`MODEL_PROFILE` records provenance; it does not prescribe a globally hard-coded
-model or effort. The initial child prompt omits runtime-owned identity, target,
-terminal, timing, and proof fields. The parent/runtime supplies them after the
-appropriate preflight.
+The [complete portable example](../examples/acceptance_evidence.json) contains a
+reviewer TaskSpec. `mode` selects portable or strict operation; `binding_mode`
+separately records provisional transport binding or runtime-atomic binding.
+`model_profile` records exposed provenance without prescribing a global model.
+`budget` is an `execution-budget-v2` object. The parent preassigns proof IDs and
+supplies the snapshot ID (the manifest identity), content identity, and artifact
+path; the reviewer does not invent them.
 
 ## Scope and focused checks
 
@@ -43,6 +38,7 @@ The closed V2 shapes are:
 ImpactScopeV2 = {
   version: "impact-scope-v2",
   changed_paths: 0..128 unique repository-relative paths,
+  review_paths: 0..128 unique repository-relative paths,
   direct_callers: 0..128 unique bounded references,
   direct_consumers: 0..128 unique bounded references,
   mapped_tests_or_configuration: 0..128 unique bounded references,
@@ -53,16 +49,30 @@ FocusedCheckV2 = {
   version: "focused-check-v2",
   id: bounded token,
   command_or_assertion: bounded text,
-  covered_scope: 0..64 unique bounded references,
+  covered_scope: 0..64 unique bounded references (nonempty when required),
   required: boolean
 }
 ```
+
+`changed_paths` is the intended integration and commit set. `review_paths` must
+cover it and also includes callers, consumers, tests, configuration, and supporting
+material needed without live-workspace access. Snapshots use `review_paths`.
 
 Path collections are set-like in V2 and are sorted in their canonical form. A
 path is repository-relative POSIX text: backslashes are converted to `/`, empty
 and dot components are normalized away, while absolute paths, parent traversal,
 NUL bytes, and duplicates after normalization are rejected. Scope and check
 entries are bounded; do not silently truncate them.
+
+`review_paths` and path-shaped `explicit_exclusions` must be disjoint scopes:
+neither may equal, contain, or be contained by the other. In particular, an
+excluded descendant cannot ride along through a recursively captured review
+directory.
+
+Within each collection, semantic identifiers such as check `id`,
+`criterion_id`, and `artifact_id` are unique. Every required focused check must
+overlap the declared review paths, and the required checks collectively cover all
+`changed_paths`; a matching check ID alone is not coverage.
 
 ## Capability preflight
 
@@ -71,6 +81,9 @@ Portable mode uses `modes.required_capabilities.portable`; strict mode adds
 `modes.required_capabilities.strict_additional`. `contract_tool.py` deliberately
 does not attest `STRICT_READY`: the authoritative runtime adapter must supply and
 validate that proof.
+
+Capability maps contain exactly the keys required by their selected mode. Portable
+records do not carry placeholder values for strict-only capabilities.
 
 The portable observation may be based on the exposed tool surface. A strict result
 must be an authoritative runtime record. `NOT_READY` blocks the requested mode;
@@ -84,9 +97,10 @@ inferred from silence. `REVIEW_UNAVAILABLE` means no usable independent reviewer
 result was delivered; `REVIEW_BLOCKED` means a result exists but its evidence cannot
 be validated. Both are non-accepting in portable mode.
 
-Runtime event shapes and portable lifecycle semantics belong to
-[`review-runtime.md`](review-runtime.md); strict binding and timing semantics
-belong to [`review-runtime-strict.md`](review-runtime-strict.md). The machine records are
+Runtime event shapes are declared in `contracts-v2.json`; strict binding, timing,
+and lifecycle semantics belong to
+[`review-runtime-strict.md`](review-runtime-strict.md). Portable review result
+classification belongs to [`review-runtime.md`](review-runtime.md). The machine records are
 `records.runtime_completion_event`, `records.runtime_terminal_event`,
 `records.runtime_stop_event`, and `records.runtime_event_sequence` in
 `contracts-v2.json`; a model-written completion string is never an event.
@@ -101,16 +115,17 @@ CHECKS, RISKS, BLOCKER_OR_INPUT, ATTENTION_REQUIRED, NEXT_ACTION
 ```
 
 It may include runtime/parent provenance fields such as task and invocation IDs,
-snapshot/content identity, artifact access proof, review coverage proof, reviewed
+snapshot/content identity, preassigned artifact-access and coverage proof IDs, reviewed
 paths, findings, the bounded closed `role_payload`, and the actual model profile. A
 child may repeat provenance for correlation but cannot invent or repair runtime-owned
 fields.
 
-Role success is selected by role in the JSON definition. Exceptional statuses are
-valid only under the common list. A reviewer `CLEAN` must include nonempty
-`reviewed_paths`; `FINDINGS` must include at least one bounded finding with severity,
-path, line, evidence, impact, status, and a concrete fix. A clean test result alone
-is never a review result.
+Role success is selected by role in the JSON definition. Read-only roles report
+`changed_paths=[]`; `REVIEW_UNAVAILABLE` is a parent disposition, not a child
+result. A reviewer `CLEAN` binds the task/run, snapshot, content, and proof IDs,
+covers every review path, passes every reported check, and contains no open finding
+or risk. `FINDINGS` includes at least one bounded actionable finding inside the
+reviewed paths. A clean test result alone is never a review result.
 
 ## Report and data boundary
 
@@ -161,6 +176,17 @@ closed fields, entry values, artifact prefixes, and bounded counts. Creation,
 verification, permissions, symlink/race checks, baseline capture, and workspace
 comparison are owned by `scripts/snapshot_tool.py` and described in
 [`review-runtime.md`](review-runtime.md).
+
+Artifact access, coverage, and review rounds are structured records whose digests
+are recomputed by the validator. A `workflow-outcome-v2` is a disposition, not
+sufficient acceptance evidence by itself. `acceptance-evidence-v2` binds the
+preflight, one to three contiguous review rounds, required checks, full-validation
+result, and final snapshot identities. Accepted evidence requires every final
+TaskSpec acceptance criterion to be `met`. Every content-changing findings fix
+starts a new fully covered round; coverage never transfers across identities.
+Objective, criterion definitions, focused checks, and impact scope are immutable
+within one round sequence. A change to any of them starts a newly authorized task
+and evidence bundle.
 
 ## Context handoff
 

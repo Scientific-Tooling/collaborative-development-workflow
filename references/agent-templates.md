@@ -106,8 +106,9 @@ The parent owns full validation and acceptance.
 Read-only review the exact immutable artifact identified by `snapshot_id` and
 `content_identity`. Reconstruct the frozen scoped diff by pairing `baseline/` Git-HEAD
 entries with post-state `files/` entries, including deleted and untracked paths; then
-inspect only the declared impact paths and named direct callers/consumers. Check correctness, regressions, edge cases,
-security/privacy, performance/accessibility when relevant, test adequacy, and scope.
+inspect every declared review path, including named direct callers/consumers. Check
+correctness, regressions, edge cases, security/privacy, performance/accessibility
+when relevant, test adequacy, and scope.
 Do not edit or review a moving workspace. Request a fresh context with
 `fork_context=false` when the runtime exposes that control.
 
@@ -117,21 +118,21 @@ Return a `role-result-v2` with:
 role: reviewer
 status: a ContractV2 review status or common exceptional status
 summary, completed_scope, changed_paths: []
-mode, base_snapshot, base_content_identity, artifact_access_proof,
+mode, base_snapshot, base_content_identity, snapshot_id, content_identity,
+artifact_access_proof,
 review_coverage_proof, reviewed_paths, checks, risks, findings, blocker_or_input,
 attention_required, next_action
 ```
 
-`CLEAN` requires nonempty reviewed paths and no actionable finding. `FINDINGS`
+`CLEAN` requires nonempty reviewed paths, passed checks, and no open finding or
+risk. `FINDINGS`
 requires bounded findings with location, evidence, impact, status, and a concrete
 fix. If the artifact cannot be read or the assigned scope cannot be completed,
 return the appropriate review-blocked result; the parent still verifies the final
 identity and proof. A reviewer cannot claim acceptance or authorize a commit.
 
-## Review-set lanes
+## Review-set boundary
 
-Instantiate the reviewer prompt once per fixed lane only when the parent selected a
-review set before freeze. Pass a lane-specific assignment and `LANE_SCOPE`; keep the
-same V2 result shape. The parent/runtime owns lane IDs, mapping, artifact proof, and
-the aggregate coverage result. A lane result never authorizes another lane's
-replacement.
+The current public V2 records support one integrated reviewer. Do not split an
+acceptance review into lanes: there is no public lane-assignment or aggregate-proof
+shape, so multiple partial results cannot be promoted to `CLEAN` coverage.

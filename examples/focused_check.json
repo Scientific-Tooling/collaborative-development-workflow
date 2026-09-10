@@ -1,0 +1,11 @@
+{
+  "version": "focused-check-v2",
+  "id": "contract-tests",
+  "command_or_assertion": "python3 -m unittest tests.test_contract_tool -v",
+  "covered_scope": [
+    "references/contracts-v2.json",
+    "scripts/contract_tool.py",
+    "tests/test_contract_tool.py"
+  ],
+  "required": true
+}

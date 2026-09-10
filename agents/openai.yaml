@@ -1,7 +1,7 @@
 interface:
   display_name: "Collaborative Development Loop"
   short_description: "Scoped plan, review, and validation loop"
-  default_prompt: "Use $collaborative-development-workflow to run a portable scoped plan, implementation, independent review, and validation for this coding task."
+  default_prompt: "Use $collaborative-development-workflow to plan and implement this coding task, validate it, and independently review an immutable snapshot."
 
 policy:
   allow_implicit_invocation: false

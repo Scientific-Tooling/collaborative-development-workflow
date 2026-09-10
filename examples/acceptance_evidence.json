@@ -1,0 +1,156 @@
+{
+  "version": "acceptance-evidence-v2",
+  "capability_preflight": {
+    "version": "capability-preflight-v2",
+    "mode": "portable",
+    "result": "PORTABLE_READY",
+    "capabilities": {
+      "read_only_subagent_identity": true,
+      "shared_snapshot_access": true,
+      "terminal_result_delivery": true
+    },
+    "missing": [],
+    "authority": "observed_tool_surface"
+  },
+  "review_rounds": [
+    {
+      "version": "review-round-v2",
+      "round": 1,
+      "task_spec": {
+        "version": "task-spec-v2",
+        "task_id": "task-1",
+        "parent_task_id": null,
+        "run_id": "run-1",
+        "invocation_id": "invocation-1",
+        "binding_token": null,
+        "binding_mode": "transport_bound_provisional",
+        "role": "reviewer",
+        "mode": "portable",
+        "objective": "review",
+        "depends_on": [],
+        "acceptance_criteria": [
+          {"criterion_id": "criterion-1", "status": "met", "summary": "review"}
+        ],
+        "read_scope": ["README.md", "src/main.py", "tests/test_main.py"],
+        "write_scope": [],
+        "impact_scope": {
+          "version": "impact-scope-v2",
+          "changed_paths": ["src/./main.py", "README.md"],
+          "review_paths": ["src/./main.py", "README.md", "tests/test_main.py"],
+          "direct_callers": ["module:entry"],
+          "direct_consumers": ["tests/test_main.py"],
+          "mapped_tests_or_configuration": ["pyproject.toml"],
+          "explicit_exclusions": ["docs/legacy"]
+        },
+        "base_snapshot": "snapshot-1",
+        "base_content_identity": "content-1",
+        "focused_checks": [
+          {
+            "version": "focused-check-v2",
+            "id": "focused",
+            "command_or_assertion": "python -m unittest",
+            "covered_scope": ["README.md", "src/main.py"],
+            "required": true
+          }
+        ],
+        "execution": "read-only",
+        "isolation": "frozen-artifact",
+        "budget": {
+          "version": "execution-budget-v2",
+          "wall_clock_seconds": 600,
+          "max_turns": 8,
+          "max_output_bytes": 65536
+        },
+        "resumable": false,
+        "model_profile": {"model": "unknown"},
+        "full_suite_owner": "main",
+        "snapshot_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "content_identity": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "artifact_path": "/tmp/artifact",
+        "artifact_access_proof": "proof-1",
+        "review_coverage_proof": "coverage-1"
+      },
+      "review_result": {
+        "version": "role-result-v2",
+        "role": "reviewer",
+        "mode": "portable",
+        "status": "CLEAN",
+        "summary": "bounded result",
+        "completed_scope": ["src/main.py"],
+        "changed_paths": [],
+        "checks": [
+          {"id": "focused", "status": "PASSED", "summary": "check passed"}
+        ],
+        "risks": [],
+        "blocker_or_input": null,
+        "attention_required": [],
+        "next_action": null,
+        "run_id": "run-1",
+        "task_id": "task-1",
+        "invocation_id": "invocation-1",
+        "report_id": "report-1",
+        "base_snapshot": "snapshot-1",
+        "base_content_identity": "content-1",
+        "snapshot_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "content_identity": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "artifact_access_proof": "proof-1",
+        "review_coverage_proof": "coverage-1",
+        "reviewed_paths": ["README.md", "src/main.py", "tests/test_main.py"],
+        "findings": []
+      },
+      "artifact_access_proof": {
+        "version": "artifact-access-proof-v2",
+        "proof_id": "proof-1",
+        "mode": "portable",
+        "base_snapshot": "snapshot-1",
+        "base_content_identity": "content-1",
+        "snapshot_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "manifest_identity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "content_identity": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "impact_scope_digest": "4ce5162032edabc332e71c84a22d4aafb684b01649d78d92dd67c110b7cf5edc",
+        "scope_paths": ["README.md", "src/main.py", "tests/test_main.py"],
+        "reviewer_result_digest": "26725d65cad96fca7c9ca8872a05fae0b411dc21b993b6b1a1f2234d0fd6359a",
+        "artifact_verification_status": "PASSED",
+        "workspace_compare_status": "PASSED"
+      },
+      "review_coverage_proof": {
+        "version": "review-coverage-proof-v2",
+        "proof_id": "coverage-1",
+        "round": 1,
+        "snapshot_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "content_identity": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "impact_scope_digest": "4ce5162032edabc332e71c84a22d4aafb684b01649d78d92dd67c110b7cf5edc",
+        "artifact_access_proof_digest": "866f583089c0dfff1dc8c5ec2e9fb56579b7e6fa99f24fea08cfa01c7da39e18",
+        "reviewer_result_digest": "26725d65cad96fca7c9ca8872a05fae0b411dc21b993b6b1a1f2234d0fd6359a",
+        "review_paths": ["README.md", "src/main.py", "tests/test_main.py"],
+        "completed_scope": ["src/main.py"],
+        "required_check_ids": ["focused"],
+        "passed_check_ids": ["focused"],
+        "prior_reviewer_result_digest": null,
+        "addressed_finding_ids": [],
+        "coverage_status": "COMPLETE"
+      }
+    }
+  ],
+  "workflow_outcome": {
+    "version": "workflow-outcome-v2",
+    "mode": "portable",
+    "outcome": "ACCEPTED_PORTABLE",
+    "accepted": true,
+    "review_status": "CLEAN",
+    "reason": null,
+    "validation_status": "PASSED",
+    "capability_preflight_digest": "cffd5cf2dc3876692c4bbb4a8d01ae75db6ab156877eb4381dd8bf920a4f6273",
+    "final_review_round_digest": "8d94f5734259a7cbc045353beacfb24e28abab3fb185134d2327395090269506",
+    "validation_checks": [
+      {"id": "full", "status": "PASSED", "summary": "suite passed"}
+    ],
+    "full_validation_check_id": "full",
+    "commit_requested": false,
+    "commit_status": "NOT_REQUESTED",
+    "commit_blocker": null,
+    "snapshot_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "content_identity": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "commit_id": null
+  }
+}
