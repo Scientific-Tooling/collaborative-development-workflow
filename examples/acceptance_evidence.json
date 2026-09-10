@@ -62,7 +62,16 @@
           "max_output_bytes": 65536
         },
         "resumable": false,
-        "model_profile": {"model": "unknown"},
+        "model_request": {
+          "version": "model-request-v2",
+          "strategy": "runtime_default",
+          "requested_model": null,
+          "requested_effort": null,
+          "fallback": "fail",
+          "reviewer_independence": "same_allowed",
+          "comparison_model": null
+        },
+        "model_profile": {"model": "unknown", "effort": "unknown"},
         "full_suite_owner": "main",
         "snapshot_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "content_identity": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -96,7 +105,12 @@
         "artifact_access_proof": "proof-1",
         "review_coverage_proof": "coverage-1",
         "reviewed_paths": ["README.md", "src/main.py", "tests/test_main.py"],
-        "findings": []
+        "findings": [],
+        "model_profile": {
+          "model": "unknown",
+          "effort": "unknown",
+          "selection_outcome": "honored"
+        }
       },
       "artifact_access_proof": {
         "version": "artifact-access-proof-v2",
@@ -109,7 +123,7 @@
         "content_identity": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "impact_scope_digest": "4ce5162032edabc332e71c84a22d4aafb684b01649d78d92dd67c110b7cf5edc",
         "scope_paths": ["README.md", "src/main.py", "tests/test_main.py"],
-        "reviewer_result_digest": "26725d65cad96fca7c9ca8872a05fae0b411dc21b993b6b1a1f2234d0fd6359a",
+        "reviewer_result_digest": "9864060b2a571a01dae5f411c898b053b00874144097f37b02e599967b96c4b0",
         "artifact_verification_status": "PASSED",
         "workspace_compare_status": "PASSED"
       },
@@ -120,8 +134,8 @@
         "snapshot_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "content_identity": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "impact_scope_digest": "4ce5162032edabc332e71c84a22d4aafb684b01649d78d92dd67c110b7cf5edc",
-        "artifact_access_proof_digest": "866f583089c0dfff1dc8c5ec2e9fb56579b7e6fa99f24fea08cfa01c7da39e18",
-        "reviewer_result_digest": "26725d65cad96fca7c9ca8872a05fae0b411dc21b993b6b1a1f2234d0fd6359a",
+        "artifact_access_proof_digest": "75e60ee0e0de885dad3cb1bfeeb04ff75ff51c6b79f707cd70a7ef6a6b8b01ee",
+        "reviewer_result_digest": "9864060b2a571a01dae5f411c898b053b00874144097f37b02e599967b96c4b0",
         "review_paths": ["README.md", "src/main.py", "tests/test_main.py"],
         "completed_scope": ["src/main.py"],
         "required_check_ids": ["focused"],
@@ -141,7 +155,7 @@
     "reason": null,
     "validation_status": "PASSED",
     "capability_preflight_digest": "cffd5cf2dc3876692c4bbb4a8d01ae75db6ab156877eb4381dd8bf920a4f6273",
-    "final_review_round_digest": "8d94f5734259a7cbc045353beacfb24e28abab3fb185134d2327395090269506",
+    "final_review_round_digest": "0b95eed2b1c9355f160c45bae757e7549e101f01fe7a7cefe0d81110acf1dfab",
     "validation_checks": [
       {"id": "full", "status": "PASSED", "summary": "suite passed"}
     ],

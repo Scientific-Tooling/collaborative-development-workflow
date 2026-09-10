@@ -45,10 +45,12 @@ blocks recovery and acceptance.
 ## Strict binding and lifecycle
 
 Before each strict spawn, the authoritative runtime atomically claims the TaskSpec,
-owner, lock, invocation, token, exact target, budget, and reserved timing.
-`runtime_atomic` binds identity, target, timing, and the result envelope before
-model execution. An agent ID alone is not binding or stop proof, and the child may
-not author, repair, or infer runtime-owned fields.
+owner, lock, invocation, token, exact target, model request, budget, and reserved
+timing. `runtime_atomic` binds identity, target, model selection, timing, and the
+result envelope before model execution. An explicit selection that cannot be bound
+fails before execution; it is never replaced silently. An agent ID alone is not
+binding or stop proof, and the child may not author, repair, or infer runtime-owned
+fields.
 
 After spawn, one complete-row CAS records the agent, channel, transport
 association, target, and spawn time. Later CAS operations match the complete

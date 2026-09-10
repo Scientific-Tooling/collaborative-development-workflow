@@ -138,6 +138,10 @@
     ],
     "coverage_statuses": ["COMPLETE", "INCOMPLETE"],
     "commit_statuses": ["NOT_REQUESTED", "PENDING", "CREATED", "BLOCKED"],
+    "model_selection_strategies": ["explicit", "inherit", "runtime_default"],
+    "model_fallback_policies": ["fail", "allow_runtime_default"],
+    "model_selection_outcomes": ["honored", "fallback", "unknown"],
+    "reviewer_model_independence": ["same_allowed", "different_preferred", "different_required"],
     "not_accepted_reasons": [
       "REVIEW_UNAVAILABLE",
       "REVIEW_BLOCKED",
@@ -397,7 +401,8 @@
       "min_properties": 1,
       "fields": {
         "model": {"type": "text", "max_bytes_ref": "limits.token_bytes"},
-        "effort": {"type": "text", "max_bytes_ref": "limits.short_token_bytes"}
+        "effort": {"type": "text", "max_bytes_ref": "limits.short_token_bytes"},
+        "selection_outcome": {"type": "enum_ref", "ref": "statuses.model_selection_outcomes"}
       }
     },
     "role_payload": {
@@ -525,6 +530,26 @@
         "workflow_outcome": {"type": "record", "kind": "workflow_outcome"}
       }
     },
+    "model_request": {
+      "required": [
+        "version",
+        "strategy",
+        "requested_model",
+        "requested_effort",
+        "fallback",
+        "reviewer_independence",
+        "comparison_model"
+      ],
+      "fields": {
+        "version": {"type": "const", "value": "model-request-v2"},
+        "strategy": {"type": "enum_ref", "ref": "statuses.model_selection_strategies"},
+        "requested_model": {"type": "text_or_none", "max_bytes_ref": "limits.token_bytes"},
+        "requested_effort": {"type": "text_or_none", "max_bytes_ref": "limits.short_token_bytes"},
+        "fallback": {"type": "enum_ref", "ref": "statuses.model_fallback_policies"},
+        "reviewer_independence": {"type": "enum_ref", "ref": "statuses.reviewer_model_independence"},
+        "comparison_model": {"type": "text_or_none", "max_bytes_ref": "limits.token_bytes"}
+      }
+    },
     "task_spec": {
       "required": [
         "version",
@@ -580,6 +605,7 @@
         "isolation": {"type": "text", "max_bytes": 1024},
         "budget": {"type": "record", "kind": "execution_budget"},
         "resumable": {"type": "boolean"},
+        "model_request": {"type": "record", "kind": "model_request"},
         "model_profile": {"type": "model_profile"},
         "full_suite_owner": {"type": "const", "value": "main"},
         "snapshot_id": {"type": "sha256_or_none"},

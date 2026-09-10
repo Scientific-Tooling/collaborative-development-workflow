@@ -55,8 +55,9 @@ files); creation publishes a verified same-parent staging tree with Linux
 no-clobber primitive. A source rename is deletion plus addition.
 
 Give the reviewer the bounded request, accepted plan, scope, exclusions, checks,
-artifact path, and identities. Pause writers before requesting fresh context with
-`fork_context=false` when supported. After the result:
+artifact path, identities, and validated model request from
+[`model-selection.md`](model-selection.md). Pause writers before requesting fresh
+context with `fork_context=false` when supported. After the result:
 
 ```bash
 python3 scripts/snapshot_tool.py compare REPOSITORY "$ARTIFACT" \
@@ -74,8 +75,9 @@ runtime-authored event semantics.
 
 The parent materializes structured artifact-access and review-coverage proofs,
 recomputes their digests, and binds them with the TaskSpec/result in a review-round
-record. A standalone outcome is not proof; portable acceptance requires the full
-`acceptance-evidence-v2` record.
+record. That validation also binds a present model request to successful resolved
+reviewer provenance. A standalone outcome is not proof; portable acceptance
+requires the full `acceptance-evidence-v2` record.
 
 ## Strict mode boundary
 

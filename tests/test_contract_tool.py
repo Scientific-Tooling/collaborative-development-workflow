@@ -15,6 +15,17 @@ import contract_tool
 
 
 class ContractToolTests(unittest.TestCase):
+    def model_request(self) -> dict:
+        return {
+            "version": "model-request-v2",
+            "strategy": "runtime_default",
+            "requested_model": None,
+            "requested_effort": None,
+            "fallback": "fail",
+            "reviewer_independence": "same_allowed",
+            "comparison_model": None,
+        }
+
     def impact_scope(self) -> dict:
         return {
             "version": "impact-scope-v2",
@@ -210,11 +221,13 @@ class ContractToolTests(unittest.TestCase):
                 "events": [stop, dict(terminal, terminal_at="123.5")],
             },
             "context_handoff": handoff,
+            "model_request": self.model_request(),
         }
 
     def acceptance_evidence(self) -> dict:
         records = self.golden_records()
         task = copy.deepcopy(records["task_spec"])
+        task["model_request"] = self.model_request()
         task["acceptance_criteria"][0]["status"] = "met"
         task["focused_checks"] = [copy.deepcopy(records["focused_check"])]
         task["focused_checks"][0]["covered_scope"] = ["src/main.py", "README.md"]
@@ -235,6 +248,11 @@ class ContractToolTests(unittest.TestCase):
                 "reviewed_paths": ["README.md", "src/main.py", "tests/test_main.py"],
                 "findings": [],
                 "risks": [],
+                "model_profile": {
+                    "model": "unknown",
+                    "effort": "unknown",
+                    "selection_outcome": "honored",
+                },
             }
         )
         result_digest = contract_tool.digest_record(result, "role_result")
@@ -387,6 +405,7 @@ class ContractToolTests(unittest.TestCase):
             "runtime_stop_event": "4b7e7c6db8206befdb31bad2b79457ec0accf210b656f15e1cad6311bf14da3b",
             "runtime_event_sequence": "81db69007e02192f2368cb6d380b89373d486cdd2049b164814ec443313f7282",
             "context_handoff": "68507785858c9b34bf0495abd9fa23a02983899b418d222b369e87042dfd2c93",
+            "model_request": "143af618a8cec2322c0267067734b90ffc7cb164cb90773bab55b7018f3d61c2",
         }
         records = self.golden_records()
         self.assertEqual(set(records), set(expected))
@@ -1276,9 +1295,260 @@ class ContractToolTests(unittest.TestCase):
 
     def test_task_spec_is_closed_and_binding_mode_matches(self) -> None:
         task = copy.deepcopy(self.golden_records()["task_spec"])
+        self.assertNotIn("model_request", task)
         self.assertEqual(contract_tool.validate_record(task, "task_spec"), [])
+        task["model_request"] = self.model_request()
+        self.assertEqual(contract_tool.validate_record(task, "task_spec"), [])
+        task["model_profile"] = {
+            "model": "unknown",
+            "effort": "unknown",
+            "selection_outcome": "honored",
+        }
+        self.assertTrue(contract_tool.validate_record(task, "task_spec"))
+        task["model_profile"] = {"model": "unknown"}
         task["binding_mode"] = "runtime_atomic"
         self.assertTrue(contract_tool.validate_record(task, "task_spec"))
+
+    def test_model_request_semantics_fail_closed(self) -> None:
+        request = self.model_request()
+        self.assertEqual(contract_tool.validate_record(request, "model_request"), [])
+
+        invalid_updates = (
+            {"strategy": "explicit", "requested_model": None},
+            {"strategy": "explicit", "requested_model": " UNKNOWN "},
+            {"strategy": "explicit", "requested_model": " review-model "},
+            {
+                "strategy": "explicit",
+                "requested_model": "named-model",
+                "requested_effort": "UNKNOWN",
+            },
+            {
+                "strategy": "explicit",
+                "requested_model": "named-model",
+                "requested_effort": " UNKNOWN ",
+            },
+            {"strategy": "inherit", "requested_model": "named-model"},
+            {"strategy": "runtime_default", "fallback": "allow_runtime_default"},
+            {"reviewer_independence": "different_preferred", "comparison_model": None},
+            {
+                "reviewer_independence": "different_preferred",
+                "comparison_model": " UNKNOWN ",
+            },
+            {"reviewer_independence": "same_allowed", "comparison_model": "author-model"},
+            {
+                "strategy": "explicit",
+                "requested_model": "author-model",
+                "reviewer_independence": "different_required",
+                "comparison_model": "author-model",
+            },
+            {
+                "strategy": "explicit",
+                "requested_model": "review-model",
+                "reviewer_independence": "different_required",
+                "comparison_model": "author-model",
+                "fallback": "allow_runtime_default",
+            },
+        )
+        for updates in invalid_updates:
+            with self.subTest(updates=updates):
+                invalid = copy.deepcopy(request)
+                invalid.update(updates)
+                self.assertTrue(contract_tool.validate_record(invalid, "model_request"))
+
+        invalid_enum = copy.deepcopy(request)
+        invalid_enum["strategy"] = "automatic"
+        self.assertTrue(contract_tool.validate_record(invalid_enum, "model_request"))
+
+        result = self.role_result()
+        result["model_profile"] = {"selection_outcome": "honored"}
+        self.assertTrue(contract_tool.validate_record(result, "role_result"))
+
+    def test_task_model_request_matches_role_and_mode(self) -> None:
+        task = copy.deepcopy(self.golden_records()["task_spec"])
+        task["role"] = "planner"
+        task["model_request"] = {
+            **self.model_request(),
+            "reviewer_independence": "different_preferred",
+            "comparison_model": "author-model",
+        }
+        self.assertTrue(contract_tool.validate_record(task, "task_spec"))
+
+        strict = copy.deepcopy(self.golden_records()["task_spec"])
+        strict.update(
+            mode="strict",
+            binding_mode="runtime_atomic",
+            binding_token="binding-1",
+        )
+        strict["model_request"] = {
+            **self.model_request(),
+            "strategy": "explicit",
+            "requested_model": "review-model",
+            "fallback": "allow_runtime_default",
+        }
+        self.assertTrue(contract_tool.validate_record(strict, "task_spec"))
+
+        inherited = copy.deepcopy(self.golden_records()["task_spec"])
+        inherited["model_request"] = {
+            **self.model_request(),
+            "strategy": "inherit",
+        }
+        inherited["model_profile"] = {"model": "parent-model", "effort": "high"}
+        self.assertEqual(contract_tool.validate_record(inherited, "task_spec"), [])
+        for field, value in (
+            ("model", " parent-model "),
+            ("model", " UNKNOWN "),
+            ("model", "   "),
+            ("effort", " high "),
+            ("effort", " UNKNOWN "),
+            ("effort", "\t"),
+        ):
+            with self.subTest(field=field, value=value):
+                malformed = copy.deepcopy(inherited)
+                malformed["model_profile"][field] = value
+                self.assertTrue(contract_tool.validate_record(malformed, "task_spec"))
+
+    def test_review_round_binds_requested_and_resolved_model(self) -> None:
+        def rebind(review_round: dict) -> None:
+            result_digest = contract_tool.digest_record(
+                review_round["review_result"], "role_result"
+            )
+            review_round["artifact_access_proof"][
+                "reviewer_result_digest"
+            ] = result_digest
+            review_round["review_coverage_proof"][
+                "reviewer_result_digest"
+            ] = result_digest
+            review_round["review_coverage_proof"][
+                "artifact_access_proof_digest"
+            ] = contract_tool.digest_record(
+                review_round["artifact_access_proof"], "artifact_access_proof"
+            )
+
+        review_round = copy.deepcopy(self.acceptance_evidence()["review_rounds"][0])
+        request = review_round["task_spec"]["model_request"]
+        request.update(
+            strategy="explicit",
+            requested_model="review-model",
+            requested_effort="high",
+        )
+        review_round["review_result"]["model_profile"] = {
+            "model": "review-model",
+            "effort": "high",
+            "selection_outcome": "honored",
+        }
+        rebind(review_round)
+        self.assertEqual(contract_tool.validate_record(review_round, "review_round"), [])
+
+        for field, value in (("model", "other-model"), ("effort", "low")):
+            with self.subTest(field=field):
+                mismatched = copy.deepcopy(review_round)
+                mismatched["review_result"]["model_profile"][field] = value
+                rebind(mismatched)
+                self.assertTrue(contract_tool.validate_record(mismatched, "review_round"))
+
+        fallback = copy.deepcopy(review_round)
+        fallback["task_spec"]["model_request"]["fallback"] = "allow_runtime_default"
+        fallback["review_result"]["model_profile"] = {
+            "model": "runtime-model",
+            "effort": "medium",
+            "selection_outcome": "fallback",
+        }
+        rebind(fallback)
+        self.assertEqual(contract_tool.validate_record(fallback, "review_round"), [])
+
+        unknown = copy.deepcopy(review_round)
+        unknown["review_result"]["model_profile"]["selection_outcome"] = "unknown"
+        rebind(unknown)
+        self.assertTrue(contract_tool.validate_record(unknown, "review_round"))
+
+        missing = copy.deepcopy(review_round)
+        missing["review_result"].pop("model_profile")
+        rebind(missing)
+        self.assertTrue(contract_tool.validate_record(missing, "review_round"))
+
+        independent = copy.deepcopy(self.acceptance_evidence()["review_rounds"][0])
+        independent["task_spec"]["model_request"].update(
+            reviewer_independence="different_required",
+            comparison_model="author-model",
+        )
+        independent["review_result"]["model_profile"]["model"] = "review-model"
+        rebind(independent)
+        self.assertEqual(contract_tool.validate_record(independent, "review_round"), [])
+        independent["review_result"]["model_profile"]["model"] = "author-model"
+        rebind(independent)
+        self.assertTrue(contract_tool.validate_record(independent, "review_round"))
+        independent["review_result"]["model_profile"]["model"] = " UNKNOWN "
+        self.assertTrue(
+            contract_tool.validate_record(independent["review_result"], "role_result")
+        )
+        independent["review_result"]["model_profile"]["model"] = " author-model "
+        self.assertTrue(
+            contract_tool.validate_record(independent["review_result"], "role_result")
+        )
+
+        preferred = copy.deepcopy(self.acceptance_evidence()["review_rounds"][0])
+        preferred["task_spec"]["model_request"].update(
+            reviewer_independence="different_preferred",
+            comparison_model="author-model",
+        )
+        preferred["review_result"]["model_profile"]["model"] = "author-model"
+        rebind(preferred)
+        self.assertEqual(contract_tool.validate_record(preferred, "review_round"), [])
+
+        inherited = copy.deepcopy(self.acceptance_evidence()["review_rounds"][0])
+        inherited["task_spec"]["model_request"]["strategy"] = "inherit"
+        inherited["task_spec"]["model_profile"] = {
+            "model": "parent-model",
+            "effort": "high",
+        }
+        inherited["review_result"]["model_profile"] = {
+            "model": "parent-model",
+            "effort": "high",
+            "selection_outcome": "honored",
+        }
+        rebind(inherited)
+        self.assertEqual(contract_tool.validate_record(inherited, "review_round"), [])
+        mismatched_inherited = copy.deepcopy(inherited)
+        mismatched_inherited["review_result"]["model_profile"]["model"] = "other-model"
+        rebind(mismatched_inherited)
+        self.assertTrue(
+            contract_tool.validate_record(mismatched_inherited, "review_round")
+        )
+
+        for field, dispatch_value, result_value in (
+            ("model", " parent-model ", "other-model"),
+            ("model", " UNKNOWN ", "other-model"),
+            ("model", "   ", "other-model"),
+            ("effort", " high ", "low"),
+            ("effort", " UNKNOWN ", "low"),
+            ("effort", "\t", "low"),
+        ):
+            with self.subTest(dispatch_field=field, dispatch_value=dispatch_value):
+                malformed = copy.deepcopy(inherited)
+                malformed["task_spec"]["model_profile"][field] = dispatch_value
+                malformed["review_result"]["model_profile"][field] = result_value
+                rebind(malformed)
+                self.assertTrue(
+                    contract_tool.validate_record(malformed, "review_round")
+                )
+
+        padded_result = copy.deepcopy(self.acceptance_evidence()["review_rounds"][0])
+        padded_result["review_result"]["model_profile"]["effort"] = " unknown "
+        self.assertTrue(
+            contract_tool.validate_record(padded_result["review_result"], "role_result")
+        )
+
+    def test_review_rounds_cannot_change_model_request(self) -> None:
+        evidence = self.two_round_evidence()
+        second = evidence["review_rounds"][1]
+        second["task_spec"]["model_request"] = {
+            **self.model_request(),
+            "strategy": "inherit",
+        }
+        evidence["workflow_outcome"]["final_review_round_digest"] = (
+            contract_tool.digest_record(second, "review_round")
+        )
+        self.assertTrue(contract_tool.validate_record(evidence, "acceptance_evidence"))
 
     def test_templates_use_v2_roles_and_do_not_redeclare_statuses(self) -> None:
         template = (Path(__file__).resolve().parents[1] / "references" / "agent-templates.md").read_text(

@@ -19,6 +19,7 @@ class ExampleTests(unittest.TestCase):
             "context_handoff.json": "context_handoff",
             "focused_check.json": "focused_check",
             "impact_scope.json": "impact_scope",
+            "model_request.json": "model_request",
             "runtime_event_sequence.json": "runtime_event_sequence",
         }
         self.assertEqual(
@@ -46,6 +47,14 @@ class ExampleTests(unittest.TestCase):
         )
         self.assertEqual(
             review_round["artifact_access_proof"]["workspace_compare_status"], "PASSED"
+        )
+        self.assertEqual(
+            review_round["task_spec"]["model_request"]["strategy"],
+            "runtime_default",
+        )
+        self.assertEqual(
+            review_round["review_result"]["model_profile"]["selection_outcome"],
+            "honored",
         )
 
 

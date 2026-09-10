@@ -997,8 +997,29 @@ def _validate_finding(value: Any, field: str) -> None:
     _validate_declared_object(value, "finding", field)
 
 
+def _validate_canonical_model_profile_values(value: dict[str, Any], field: str) -> None:
+    for name in ("model", "effort"):
+        if name not in value:
+            continue
+        profile_value = value[name]
+        if (
+            not isinstance(profile_value, str)
+            or not profile_value
+            or profile_value.strip() != profile_value
+        ):
+            raise ContractError(
+                f"{field}.{name} must be nonempty and have no surrounding whitespace"
+            )
+
+
 def _validate_model_profile(value: Any, field: str) -> None:
     _validate_declared_object(value, "model_profile", field)
+    if "selection_outcome" in value and not {"model", "effort"}.issubset(value):
+        raise ContractError(
+            f"{field}.selection_outcome requires both model and effort provenance"
+        )
+    if "selection_outcome" in value:
+        _validate_canonical_model_profile_values(value, field)
 
 
 def _validate_role_payload(value: Any, field: str) -> None:
@@ -1067,6 +1088,103 @@ def _require_real_identifier(record: dict[str, Any], field: str) -> None:
     value = record.get(field)
     if not isinstance(value, str) or not value or value in SENTINELS:
         raise ContractError(f"{field} must contain a non-sentinel identity")
+
+
+def _is_known_model_value(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    stripped = value.strip()
+    return bool(stripped) and stripped == value and stripped.upper() not in SENTINELS
+
+
+def _validate_model_request_semantics(record: dict[str, Any]) -> None:
+    strategy = record["strategy"]
+    requested_model = record["requested_model"]
+    requested_effort = record["requested_effort"]
+    fallback = record["fallback"]
+    independence = record["reviewer_independence"]
+    comparison_model = record["comparison_model"]
+
+    if strategy == "explicit":
+        if not _is_known_model_value(requested_model):
+            raise ContractError(
+                "explicit model requests require a non-sentinel requested_model"
+            )
+    elif requested_model is not None or requested_effort is not None:
+        raise ContractError(
+            "inherit and runtime_default model requests cannot carry requested values"
+        )
+
+    if requested_effort is not None and not _is_known_model_value(requested_effort):
+        raise ContractError("requested_effort must be null or a non-sentinel value")
+
+    if strategy == "runtime_default" and fallback != "fail":
+        raise ContractError("runtime_default model requests require fallback=fail")
+
+    if independence == "same_allowed":
+        if comparison_model is not None:
+            raise ContractError(
+                "same_allowed reviewer independence requires comparison_model=null"
+            )
+    elif not _is_known_model_value(comparison_model):
+        raise ContractError(
+            "different reviewer independence requires a non-sentinel comparison_model"
+        )
+
+    if independence == "different_required":
+        if fallback != "fail":
+            raise ContractError("different_required reviewer independence requires fallback=fail")
+        if strategy == "inherit":
+            raise ContractError("inherit cannot satisfy different_required reviewer independence")
+
+    if (
+        independence in {"different_preferred", "different_required"}
+        and strategy == "explicit"
+        and requested_model == comparison_model
+    ):
+        raise ContractError(
+            "an explicit reviewer model cannot equal comparison_model when a different model is requested"
+        )
+
+
+def _validate_resolved_model_selection(
+    request: dict[str, Any], dispatch_profile: Any, profile: Any
+) -> None:
+    if not isinstance(profile, dict) or not {
+        "model", "effort", "selection_outcome"
+    }.issubset(profile):
+        raise ContractError(
+            "successful review with model_request requires resolved model, effort, and selection_outcome"
+        )
+
+    outcome = profile["selection_outcome"]
+    if outcome == "fallback" and request["fallback"] != "allow_runtime_default":
+        raise ContractError("model fallback was not allowed by the reviewer TaskSpec")
+    if outcome == "unknown" and request["fallback"] == "fail":
+        raise ContractError("fallback=fail requires an attested model selection outcome")
+
+    if request["strategy"] == "explicit" and outcome == "honored":
+        if profile["model"] != request["requested_model"]:
+            raise ContractError("resolved model does not match the explicit model request")
+        requested_effort = request["requested_effort"]
+        if requested_effort is not None and profile["effort"] != requested_effort:
+            raise ContractError("resolved effort does not match the explicit effort request")
+
+    if request["strategy"] == "inherit" and outcome == "honored":
+        if not isinstance(dispatch_profile, dict):
+            raise ContractError("inherit requires a dispatch model profile")
+        expected_model = dispatch_profile.get("model")
+        expected_effort = dispatch_profile.get("effort")
+        if _is_known_model_value(expected_model) and profile["model"] != expected_model:
+            raise ContractError("resolved model does not match the inherited dispatch model")
+        if _is_known_model_value(expected_effort) and profile["effort"] != expected_effort:
+            raise ContractError("resolved effort does not match the inherited dispatch effort")
+
+    if request["reviewer_independence"] == "different_required":
+        if not _is_known_model_value(profile["model"]):
+            raise ContractError("different_required needs known resolved model provenance")
+        if profile["model"] == request["comparison_model"]:
+            raise ContractError("different_required reviewer resolved to comparison_model")
 
 
 def _scope_contains(scope_paths: Iterable[str], path: str) -> bool:
@@ -1152,7 +1270,13 @@ def validate_record(record: Any, kind: str) -> list[str]:
         elif kind == "focused_check":
             if record["required"] and not record["covered_scope"]:
                 raise ContractError("required focused checks must declare covered_scope")
+        elif kind == "model_request":
+            _validate_model_request_semantics(record)
         elif kind == "task_spec":
+            if "selection_outcome" in record["model_profile"]:
+                raise ContractError(
+                    "TaskSpec model_profile cannot carry a result selection_outcome"
+                )
             if record["role"] != "implementer" and record["write_scope"]:
                 raise ContractError("non-implementer TaskSpec write_scope must be empty")
             if record["mode"] == "portable":
@@ -1166,6 +1290,26 @@ def validate_record(record: Any, kind: str) -> list[str]:
                 raise ContractError("strict TaskSpec requires runtime_atomic binding")
             if record["mode"] == "strict":
                 _require_real_identifier(record, "binding_token")
+            model_request = record.get("model_request")
+            if model_request is not None:
+                _validate_canonical_model_profile_values(
+                    record["model_profile"], "TaskSpec.model_profile"
+                )
+                if (
+                    record["role"] != "reviewer"
+                    and model_request["reviewer_independence"] != "same_allowed"
+                ):
+                    raise ContractError(
+                        "non-reviewer TaskSpecs require reviewer_independence=same_allowed"
+                    )
+                if (
+                    record["mode"] == "strict"
+                    and model_request["strategy"] == "explicit"
+                    and model_request["fallback"] != "fail"
+                ):
+                    raise ContractError(
+                        "strict explicit model requests require fallback=fail"
+                    )
             if record["role"] == "reviewer":
                 for field in (
                     "invocation_id",
@@ -1349,6 +1493,13 @@ def validate_record(record: Any, kind: str) -> list[str]:
             coverage = record["review_coverage_proof"]
             if task["role"] != "reviewer" or result["role"] != "reviewer":
                 raise ContractError("review_round requires reviewer task and result records")
+            model_request = task.get("model_request")
+            if model_request is not None and result["status"] in {"CLEAN", "FINDINGS"}:
+                _validate_resolved_model_selection(
+                    model_request,
+                    task.get("model_profile"),
+                    result.get("model_profile"),
+                )
             if record["round"] != coverage["round"]:
                 raise ContractError("review round numbers do not match")
             for field in ("base_snapshot", "base_content_identity"):
@@ -1472,6 +1623,8 @@ def validate_record(record: Any, kind: str) -> list[str]:
                     raise ContractError("review rounds cannot change acceptance-criterion definitions")
                 if _focused_check_definitions(current_task) != _focused_check_definitions(previous_task):
                     raise ContractError("review rounds cannot change focused-check definitions")
+                if current_task.get("model_request") != previous_task.get("model_request"):
+                    raise ContractError("review rounds cannot change the model request")
                 if digest_record(current_task["impact_scope"], "impact_scope") != digest_record(
                     previous_task["impact_scope"], "impact_scope"
                 ):

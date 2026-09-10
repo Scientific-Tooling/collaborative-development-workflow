@@ -13,7 +13,8 @@ to [`workflow.md`](workflow.md); record fields and public statuses belong to
   read-only; strict writers require runtime-atomic binding.
 - Child completion is evidence, not an accepted dependency or authorization for an
   external mutation. Validate its exact role, status, scope, identity, checks, and
-  findings before consuming it.
+  findings before consuming it. Resolve each delegation's model request under
+  [`model-selection.md`](model-selection.md) and validate resolved provenance.
 - Timeout, silence, missing progress, wrapper yield, and close acknowledgement do
   not permit retry, replacement, takeover, unlock, cleanup, or state inference.
 - Ledgers and event journals contain bounded metadata only. Reports must not contain
@@ -41,6 +42,7 @@ Record at minimum:
 ```text
 task/run identity, role, objective, dependencies, mode
 read/write/impact scopes and exclusions
+model request and resolved model profile
 baseline and result content identities
 focused checks, snapshot/artifact identity
 report disposition, review status, outcome, and reason
@@ -66,10 +68,11 @@ and recovery are in [`review-runtime-strict.md`](review-runtime-strict.md) and
 ## Scope, ownership, and worktrees
 
 Before a task is claimed, record common baseline, read/write/impact scopes,
-exclusions, dependencies, focused checks, mode, and integration order. Parallel
-writers are safe only with disjoint write scopes, isolated workspaces, a common
-baseline, and no unreviewed shared dependency. Serialize shared contracts,
-migrations, generated files, and overlapping callers. Background work must be
+exclusions, dependencies, focused checks, mode, and integration order. Record each
+assignment's model request; model selection never changes write ownership or
+isolation requirements. Parallel writers are safe only with disjoint write scopes,
+isolated workspaces, a common baseline, and no unreviewed shared dependency.
+Serialize shared contracts, migrations, generated files, and overlapping callers. Background work must be
 genuinely independent and joined before a dependent result is consumed.
 
 Create a task-specific isolated worktree at the recorded baseline when a strict or

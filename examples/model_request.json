@@ -1,0 +1,9 @@
+{
+  "version": "model-request-v2",
+  "strategy": "explicit",
+  "requested_model": "configured-reviewer-model",
+  "requested_effort": "high",
+  "fallback": "fail",
+  "reviewer_independence": "different_preferred",
+  "comparison_model": "configured-authoring-model"
+}

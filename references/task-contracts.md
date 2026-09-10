@@ -25,10 +25,33 @@ python3 scripts/contract_tool.py validate --kind acceptance_evidence \
 The [complete portable example](../examples/acceptance_evidence.json) contains a
 reviewer TaskSpec. `mode` selects portable or strict operation; `binding_mode`
 separately records provisional transport binding or runtime-atomic binding.
-`model_profile` records exposed provenance without prescribing a global model.
+Every newly produced delegated task includes a `model-request-v2` selected under
+[`model-selection.md`](model-selection.md). The request records strategy, requested
+model/effort, fallback, and reviewer diversity without prescribing a global model.
+It is schema-optional only for compatibility with 2.0.0 records. `model_profile`
+records profile data exposed at dispatch.
 `budget` is an `execution-budget-v2` object. The parent preassigns proof IDs and
 supplies the snapshot ID (the manifest identity), content identity, and artifact
 path; the reviewer does not invent them.
+
+The closed model request is:
+
+```text
+ModelRequestV2 = {
+  version: "model-request-v2",
+  strategy: "explicit" | "inherit" | "runtime_default",
+  requested_model: text | null,
+  requested_effort: text | null,
+  fallback: "fail" | "allow_runtime_default",
+  reviewer_independence:
+    "same_allowed" | "different_preferred" | "different_required",
+  comparison_model: text | null
+}
+```
+
+Validate it independently with `contract_tool.py validate --kind model_request`.
+Exact semantics and model-neutral role defaults live only in
+[`model-selection.md`](model-selection.md).
 
 ## Scope and focused checks
 
@@ -119,6 +142,12 @@ snapshot/content identity, preassigned artifact-access and coverage proof IDs, r
 paths, findings, the bounded closed `role_payload`, and the actual model profile. A
 child may repeat provenance for correlation but cannot invent or repair runtime-owned
 fields.
+
+When a successful reviewer task carries `model_request`, its result profile binds
+the resolved `model`, `effort`, and `selection_outcome` (`honored`, `fallback`, or
+`unknown`). The review-round validator rejects a disallowed fallback, an
+unattested fail-closed selection, a mismatched honored explicit request, or an
+unsatisfied `different_required` comparison.
 
 Role success is selected by role in the JSON definition. Read-only roles report
 `changed_paths=[]`; `REVIEW_UNAVAILABLE` is a parent disposition, not a child

@@ -19,6 +19,8 @@ Before editing or delegating:
    focused `FocusedCheckV2` records. Do not silently truncate a scope.
 5. Select `portable` by default, or `strict` only when the user explicitly requests
    it. Validate a `capability-preflight-v2` record before any mutation or spawn.
+6. Before each delegation, resolve a `model-request-v2` under
+   [`model-selection.md`](model-selection.md) and include it in the TaskSpec.
 
 Portable is ready only when identifiable read-only subagents, terminal result
 delivery, and shared snapshot access are observable. Strict additionally needs the
@@ -37,7 +39,8 @@ accepted plan records:
 
 - exact or likely paths and the V2 impact scope;
 - dependencies, milestones, write ownership, mode, isolation, and integration order;
-- focused checks, validation owner, exclusions, risks, and material decisions; and
+- focused checks, validation owner, exclusions, risks, and material decisions;
+- model-selection strategy, fallback, and reviewer diversity policy; and
 - one prescribed full-validation command and its main-agent owner.
 
 A delegated planner returns a ContractV2 role result. Treat it as evidence, not as
@@ -53,7 +56,8 @@ delegates may plan, research, verify, or review a supplied immutable artifact.
 Each writer preserves unrelated changes, runs focused checks, stops at a coherent
 checkpoint, and returns a V2 role result. It must not commit, push, deploy, install,
 reset, clean, delete, or perform unrelated work. The parent verifies actual changed
-paths, content identity, and checks before integrating any checkpoint.
+paths, content identity, checks, and resolved model-selection evidence before
+integrating any checkpoint.
 
 For a large change, integrate one coherent milestone at a time and create a new
 integrated identity before review. Do not let a child worktree or a moving workspace
@@ -70,13 +74,16 @@ After implementation:
    values as expected-identity arguments;
 5. pause all writers and main-agent edits; and
 6. start one fresh, read-only reviewer context for the exact artifact, using
-   `fork_context=false` when the runtime exposes that option.
+   `fork_context=false` when the runtime exposes that option, and apply the
+   TaskSpec's recorded model request.
 
 ContractV2 acceptance currently supports one integrated reviewer. Review-lane
 aggregation is not a public record shape and must not be used to claim acceptance.
 A reviewer sees the request, accepted plan, baseline, exact scope,
 exclusions, focused checks, artifact identity, and named risk-bearing consumers—no
 unbounded conversation or live workspace.
+Reviewer model diversity follows [`model-selection.md`](model-selection.md) and
+supplements rather than replaces fresh-context and frozen-artifact independence.
 
 In portable mode, the parent verifies the artifact and workspace identities before
 and after review, validates the reviewer result, and checks complete scope coverage.
@@ -92,6 +99,8 @@ new snapshot and review identity and complete integrated review coverage; no old
 coverage or `CLEAN` result transfers. Ordinary
 findings-driven rounds do not need new user authorization; the bounded round limit
 and user-decision gates are defined in that reference.
+The model request remains immutable across these rounds, although the runtime may
+resolve a different concrete model when the unchanged request permits it.
 
 `REVIEW_UNAVAILABLE` means no usable independent result arrived. `REVIEW_BLOCKED`
 means a result exists but its identity, scope, artifact, or required proof is not
@@ -107,7 +116,7 @@ After the reviewer returns, the main agent performs only read-only acceptance wo
 1. inspects the complete task diff, status, staged boundary, and generated/secrets/
    debug changes while keeping substantive scope review bounded;
 2. validates the reviewer result, structured proof records, required-check coverage,
-   and previously recorded full-validation result;
+   requested/resolved model policy, and previously recorded full-validation result;
 3. runs `snapshot_tool.py compare` with both expected identities to recheck the
    final workspace against the exact reviewed artifact; and
 4. validates the complete `acceptance-evidence-v2` bundle.

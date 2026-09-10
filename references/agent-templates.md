@@ -22,7 +22,11 @@ In portable mode every delegate is read-only. A strict writer may edit only when
 runtime has already supplied an atomic binding and the TaskSpec explicitly grants a
 write scope. The parent waits for one terminal result; it does not poll, inspect a
 moving artifact, or interpret liveness text as completion. Do not rely on an inherited
-model or effort; record the actual profile only if the runtime exposes it.
+model or effort unless the validated `model-request-v2` explicitly selects
+`inherit`. The parent resolves the request under
+[`model-selection.md`](model-selection.md) before spawn. Record the supplied
+resolved profile and selection outcome; use `unknown` when the runtime does not
+expose a value, and never invent provenance.
 
 ## Planner
 
@@ -111,6 +115,9 @@ correctness, regressions, edge cases, security/privacy, performance/accessibilit
 when relevant, test adequacy, and scope.
 Do not edit or review a moving workspace. Request a fresh context with
 `fork_context=false` when the runtime exposes that control.
+Apply the TaskSpec's reviewer model-independence policy against its
+`comparison_model`. Model diversity supplements fresh-context and frozen-artifact
+independence; it does not replace them.
 
 Return a `role-result-v2` with:
 

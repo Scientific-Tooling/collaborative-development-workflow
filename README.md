@@ -19,13 +19,14 @@ validated, use `REVIEW_BLOCKED`.
 
 All public statuses, closed record shapes, limits, path rules, and hash domains are
 defined in [`references/contracts-v2.json`](references/contracts-v2.json). Older V1
-text is legacy and unsupported by the bundled helpers. This checkout documents
-release 2.0.0; see the [changelog](CHANGELOG.md) and
+text is legacy and unsupported by the bundled helpers. The latest released
+baseline is 2.0.0; see the [changelog](CHANGELOG.md) for unreleased changes and the
 [V1 migration guide](references/migrating-v1-to-v2.md).
 
 ## What it provides
 
 - capability preflight before editing or delegation;
+- explicit, model-neutral sub-agent selection requests with recorded resolution;
 - bounded planner, researcher, implementer, verifier, and reviewer prompts;
 - one-writer workspace and isolated-worktree discipline;
 - deterministic, scoped, tamper-evident review snapshots;
@@ -74,6 +75,7 @@ references/review-recovery.md    portable findings loop and review failure
 references/review-recovery-strict.md strict cancellation and replacement recovery
 references/workflow.md            end-to-end lifecycle and commit gate
 references/agent-templates.md    bounded delegated-role prompts
+references/model-selection.md    model request, fallback, and reviewer diversity policy
 references/coordination-protocol.md shared/portable coordination rules
 references/context-rollover.md   temporary handoff and fresh-task protocol
 references/failure-and-reporting.md failure and user handoff rules
@@ -94,6 +96,7 @@ Validate or digest a closed ContractV2 record:
 python3 scripts/contract_tool.py validate --kind impact_scope examples/impact_scope.json
 python3 scripts/contract_tool.py digest --kind context_handoff examples/context_handoff.json
 python3 scripts/contract_tool.py validate --kind acceptance_evidence examples/acceptance_evidence.json
+python3 scripts/contract_tool.py validate --kind model_request examples/model_request.json
 python3 scripts/contract_tool.py describe --kind role_result
 python3 scripts/contract_tool.py describe --section modes
 python3 scripts/contract_tool.py describe --path records.role_result.fields.status
@@ -104,6 +107,13 @@ python3 scripts/contract_tool.py describe --path modes.required_capabilities.por
 resolves a dotted path against the effective expanded ContractV2 and emits only
 that subtree, so a caller can inspect one field or capability list without loading
 the whole ContractV2 source.
+
+Every newly produced delegated TaskSpec includes a `model-request-v2`. It records
+whether selection is explicit, inherited, or runtime-defaulted; the fallback
+policy; and any reviewer model-diversity requirement. Concrete model IDs remain in
+user, repository, or runtime configuration. The result records the resolved model,
+effort, and whether selection was honored, fell back, or could not be observed.
+See [`references/model-selection.md`](references/model-selection.md).
 
 Create and check a review artifact outside the repository:
 

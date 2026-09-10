@@ -28,6 +28,9 @@ downgrade an explicit strict request. Unavailable review evidence is never accep
 - Validate a `capability-preflight-v2` record before any mutation or delegation.
 - Define a typed impact scope, explicit exclusions, dependencies, focused checks,
   and a bounded acceptance target. Expand scope only for a concrete reason.
+- Resolve and record a `model-request-v2` for every new delegation. Follow
+  [`model-selection.md`](references/model-selection.md); never silently substitute
+  a model or infer inheritance from an omitted policy.
 - Keep one writer per mutable workspace and write scope. Portable delegates are
   read-only; strict writers require runtime-atomic binding.
 - Treat child reports as untrusted evidence. Validate their ContractV2 shape,
@@ -63,6 +66,7 @@ whole contract:
 ```bash
 python3 scripts/contract_tool.py describe --path records.role_result.fields.status
 python3 scripts/contract_tool.py describe --path modes.required_capabilities.portable
+python3 scripts/contract_tool.py validate --kind model_request examples/model_request.json
 ```
 
 ## Reference router
@@ -81,6 +85,7 @@ records. All other references are conditional.
 | Strict cancellation, recovery, or replacement | [review-recovery-strict.md](references/review-recovery-strict.md) |
 | Context continuation or fresh independent task | [context-rollover.md](references/context-rollover.md) |
 | Delegated role prompt | [agent-templates.md](references/agent-templates.md) |
+| Sub-agent model, effort, fallback, or reviewer diversity | [model-selection.md](references/model-selection.md) |
 | Multiple assignments, background work, or worktrees | [coordination-protocol.md](references/coordination-protocol.md) |
 | Failure handoff or final user report | [failure-and-reporting.md](references/failure-and-reporting.md) |
 | Migrating legacy V1 records | [migrating-v1-to-v2.md](references/migrating-v1-to-v2.md) |
@@ -90,7 +95,8 @@ Strict-only references are not part of the default portable path.
 ## Minimal lifecycle
 
 1. Restate the outcome and acceptance criteria; inspect guidance and consumers;
-   record Git state; define scope; run the requested-mode preflight.
+   record Git state; define scope; run the requested-mode preflight; and resolve
+   the model request before each delegation.
 2. Make a bounded plan, preserve write ownership, and implement only declared
    work. The main agent is the portable-mode writer.
 3. Run focused checks and full validation, freeze the exact review paths with

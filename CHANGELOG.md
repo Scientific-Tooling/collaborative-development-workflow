@@ -3,6 +3,23 @@
 All notable changes to this project are documented here. The repository follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- Model-neutral `model-request-v2` records for explicit, inherited, or runtime
+  selection, fallback policy, and reviewer model diversity.
+- Resolved selection outcomes in role-result model provenance, with validator
+  checks that bind successful reviews to their requests.
+
+### Changed
+
+- New workflow-produced delegated tasks must record model selection explicitly;
+  the schema keeps the field optional only for compatibility with 2.0.0 records.
+- Reviewer model requests remain stable across findings rounds, and required model
+  diversity now fails closed when provenance is unknown or matches the authoring
+  model.
+
 ## [2.0.0] - 2026-09-10
 
 ### Added

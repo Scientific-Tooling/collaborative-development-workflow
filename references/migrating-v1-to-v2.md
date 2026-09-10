@@ -8,8 +8,11 @@ do not provide a permissive compatibility mode or automatic converter.
 
 1. Rebuild each object from the current closed shape reported by
    `contract_tool.py describe --kind KIND`; do not copy unknown V1 fields.
-2. Use lowercase schema field names and structured `model_profile` and
-   `execution-budget-v2` objects.
+2. Use lowercase schema field names, a structured `model_profile`, and an
+   `execution-budget-v2` object. Current producers also add a validated
+   `model-request-v2` to each delegated TaskSpec and record the resolved profile
+   in its result. The field remains schema-optional only so 2.0.0 TaskSpecs keep
+   validating; see [`model-selection.md`](model-selection.md).
 3. Separate operating `mode` (`portable` or `strict`) from `binding_mode`
    (`transport_bound_provisional` or `runtime_atomic`). Portable delegated tasks
    have an empty write scope.

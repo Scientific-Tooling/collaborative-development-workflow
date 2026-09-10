@@ -31,17 +31,17 @@ authorization boundary. For each validated finding:
 2. apply only a confirmed, in-scope fix;
 3. rerun the affected focused checks;
 4. rerun the prescribed full validation;
-5. confirm that the task objective, acceptance definitions, focused checks, and
-   impact scope remain unchanged;
+5. confirm that the task objective, acceptance definitions, focused checks,
+   impact scope, and model request remain unchanged;
 6. freeze and verify a new snapshot with new manifest/content identities; and
 7. rerun one integrated review against every declared review path in a fresh
    independent context. No old coverage or `CLEAN` result transfers to the new
    identity. Review-lane aggregation is not supported by the public V2 contracts.
 
-If a finding requires a scope, objective, criterion-definition, or focused-check
-change, stop this acceptance sequence and start a newly authorized task/evidence
-bundle. Never shrink or silently rewrite the original review task to obtain
-acceptance.
+If a finding requires a scope, objective, criterion-definition, focused-check, or
+model-request change, stop this acceptance sequence and start a newly authorized
+task/evidence bundle. Never shrink or silently rewrite the original review task to
+obtain acceptance.
 
 Permit at most three total review rounds: the initial review plus two fix/review
 rounds. If the third review still has actionable findings,
