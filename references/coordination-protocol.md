@@ -28,6 +28,13 @@ preliminary read scope and exclusions. Use an enforced read-only sandbox, focuse
 question, fixed output limit, preliminary TaskSpec and preflight, and separate run
 ID. Validate them before spawning. Its suggestions do not authorize scope, and its
 provisional scope and run ID cannot become acceptance evidence.
+Run a `capability-preflight-v2` record before any edit or spawn. Portable requires
+identifiable read-only subagents, terminal result delivery, shared snapshot access,
+and a protected Reviewer wait. Strict additionally requires the authoritative
+runtime capabilities in
+[`review-runtime-strict.md`](review-runtime-strict.md), must be explicitly
+requested, and must fail before mutation when its authoritative record is absent.
+Never silently downgrade it.
 
 ## Portable parent state
 
@@ -86,6 +93,22 @@ needs it; silence or timeout never authorizes cleanup.
 Use one integrated reviewer for acceptance. ContractV2 has no review-lane or
 aggregate-proof record, so partial reviews cannot combine into `CLEAN`. Snapshot
 and review mechanics remain in [`review-runtime.md`](review-runtime.md).
+Choose and record the Reviewer budget before freezing; use the Extended profile by
+default when no shorter limit is explicitly requested. Freeze the exact review
+paths with `snapshot_tool.py` before starting a reviewer. Start one integrated
+Reviewer with the selected `execution-budget-v2`, then wait once in the foreground
+for that same invocation. Do not poll, probe, edit, roll over context, or issue an
+automatic stop before the protected deadline. A wrapper yield is not a terminal
+result and must resume the same wait. If the host cannot honor the selected window,
+record the capability gap and leave acceptance blocked rather than shortening the
+review silently.
+
+The public V2 contract has no review lane assignment or aggregate-proof record;
+multiple partial reviews therefore cannot be combined into `CLEAN`. Portable
+snapshot and wait mechanics are in [`review-runtime.md`](review-runtime.md); strict
+lifecycle mechanics are in the strict references above.
+
+## External mutation boundary
 
 No child or recovery path may push, publish, deploy, install, change a live service,
 or create a remote resource. Follow the common commit and external-change gates in

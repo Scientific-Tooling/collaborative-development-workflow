@@ -8,7 +8,7 @@ independent reviewer. It creates a local commit only when the user asks for one.
 
 | Mode | Default? | Requirements | Acceptance |
 | --- | --- | --- | --- |
-| `portable` | yes; Linux only | identifiable reviewer with an enforced read-only sandbox, terminal result delivery, shared snapshot access | `ACCEPTED_PORTABLE` only after live checks and a consistent `acceptance-evidence-v2` record |
+| `portable` | yes; Linux only | identifiable reviewer with an enforced read-only sandbox, terminal result delivery, shared snapshot access, protected Reviewer wait | `ACCEPTED_PORTABLE` only after live checks and a consistent `acceptance-evidence-v2` record |
 | `strict` | no; explicit request only | portable features plus an outside runtime that binds work atomically, records lifecycle events and monotonic time, and safely rejects conflicting updates | only the outside runtime can claim `STRICT_READY` or `ACCEPTED_STRICT` |
 
 Portable snapshot publication depends on Linux filesystem operations. A review
@@ -39,6 +39,8 @@ baseline is 2.0.0; see the [changelog](CHANGELOG.md) for unreleased changes and 
 - deterministic review snapshots for the declared files;
 - portable review records and separate rules for strict runtime guarantees;
 - small continuation records and clean starts for independent tasks;
+- reviewer-first execution budgets with one uninterrupted blocking wait;
+- bounded context rollover and independent-task handoffs;
 - explicit handling for findings, unavailable review, cancellation, and quarantine;
 - refusal to accept work when independent review evidence is unavailable; and
 - a local commit only when explicitly requested and safe from overlapping old edits.
@@ -228,6 +230,12 @@ See [`references/model-selection.md`](references/model-selection.md).
 
 This helper is Linux-only. Create and check a review snapshot outside the target
 repository:
+
+Reviewer TaskSpecs use the Extended execution profile by default (`10800` seconds,
+`128` turns, and `524288` output bytes) unless a shorter budget is explicitly
+requested. The parent waits on the same reviewer invocation and does not poll or
+interrupt it before the protected deadline; a host that cannot honor that contract
+cannot silently claim a completed independent review.
 
 ```bash
 python3 "$CDW_SKILL_DIR/scripts/snapshot_tool.py" create /path/to/repository \

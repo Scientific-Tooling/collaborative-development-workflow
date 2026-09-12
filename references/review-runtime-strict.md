@@ -15,34 +15,46 @@ not ship an adapter or conformance claim. Never silently downgrade strict.
 
 ## Budget and monotonic timing
 
-Choose the review tier before freezing. Standard uses a 7200-second snapshot budget
-and 1800-second initial attempt; Extended uses 10800 and 3600. The fixed budget
-covers the attempt, recovery grace, one replacement, and its review. Reserve at
-least 60 seconds for recovery, 120 for replacement decision, 120 for spawn/binding,
-and 1500 for replacement review.
+Choose the Reviewer profile from [`review-runtime.md`](review-runtime.md) before
+freezing. `wall_clock_seconds` is the protected review window and the initial
+attempt receives the full selected window: do not reserve replacement capacity by
+shortening the first Reviewer to an arbitrary 30- or 60-minute slice. Recovery grace
+is control-plane time after that window, not a reason to interrupt the Reviewer
+early. A replacement is opportunistic only when the predecessor terminates early
+and the fixed window still contains the required decision, spawn/binding, and
+minimum review time.
 
 Record the delegated attempt bound in the TaskSpec `execution-budget-v2` object
 (`wall_clock_seconds`, `max_turns`, and `max_output_bytes`). The larger lifecycle
 tier remains parent/runtime policy and must not be inferred from the task object.
 Contract validation caps those three task values at 86,400 seconds, 128 turns, and
 4,194,304 bytes. A runtime may enforce smaller limits.
+Record all three selected values in the TaskSpec `execution-budget-v2` object
+(`wall_clock_seconds`, `max_turns`, and `max_output_bytes`). The profile remains
+parent/runtime policy and must not be inferred from an omitted task field. The
+runtime must not apply a smaller hidden cap.
 
 Use one foreground blocking wait per invocation; a wrapper continuation is the same
-wait. Never poll or inspect a moving workspace. Silence, empty output, timeout
-text, and close acknowledgement are not results.
+wait. Never poll or inspect a moving workspace. Do not issue an automatic
+close/interrupt/cancel while the Reviewer is inside the protected window. Silence,
+empty output, timeout text, and close acknowledgement are not results.
 
 At freeze, record one verified monotonic start and derive the deadline once:
 
 ```text
-attempt_deadline_at = min(snapshot_deadline_at,
-                          snapshot_budget_started_at + initial_budget)
-recovery_deadline_at = min(snapshot_deadline_at,
-                           attempt_deadline_at + recovery_grace)
+attempt_deadline_at = snapshot_budget_started_at + wall_clock_seconds
+snapshot_deadline_at = attempt_deadline_at
+recovery_deadline_at = attempt_deadline_at + recovery_grace
 ```
 
 Samples use one finite, ordered monotonic clock; wall-clock values are display
 metadata. Missing, reversed, non-finite, or under-budget timing is `UNVERIFIED` and
 blocks recovery and acceptance.
+
+At `attempt_deadline_at`, a missing result may enter the runtime-owned stop path
+once, using the exact target and `recovery_deadline_at`; it must not be interpreted
+as a successful review. A portable-style wrapper timeout before that deadline is a
+runtime capability failure, not permission to stop or replace the Reviewer.
 
 ## Strict binding and lifecycle
 

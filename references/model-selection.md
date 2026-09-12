@@ -80,6 +80,16 @@ All non-reviewer defaults use `same_allowed`, as do ordinary reviews. For a
 high-risk change, use `different_preferred` when the primary authoring model is
 known. Use `different_required` only when the user, repository, or assurance
 policy requires it.
+Reviewer model strength and execution budget are separate controls. The reviewer
+default should be paired with the Extended budget in
+[`review-runtime.md`](review-runtime.md) unless the user or repository explicitly
+chooses a shorter profile; a high-effort model does not compensate for a premature
+wait timeout, and a long wait does not compensate for an unsuitable model.
+
+All non-reviewer defaults use `same_allowed`. Ordinary reviews also use
+`same_allowed`. For high-risk changes, use `different_preferred` when the runtime
+can expose the primary authoring model. Use `different_required` only when the
+user, repository, or high-assurance policy requires it.
 
 ## Reviewer independence
 

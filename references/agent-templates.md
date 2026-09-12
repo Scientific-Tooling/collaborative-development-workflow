@@ -92,6 +92,16 @@ receive only the review task and artifact. In the current collaboration adapter,
 `fork_turns="none"` requests no inherited history; it does not restrict file
 reads. Only a runtime container mount or read allowlist can enforce artifact-only
 access.
+The parent must supply the Reviewer `execution-budget-v2` chosen from
+[`review-runtime.md`](review-runtime.md). The default is the Extended profile
+(`10800` seconds, `128` turns, `524288` output bytes) when the user has not asked
+for a shorter window. Use the whole protected window if needed; do not treat a
+wrapper timeout, empty poll, or context rollover as permission to stop. The parent
+must keep this invocation live and must not send `close`, `cancel`, or `interrupt`
+before a terminal result or the protected deadline, except for authoritative
+binding failure, a safety incident, or explicit user cancellation.
+
+Return a `role-result-v2` with:
 
 Apply the reviewer-independence policy to `comparison_model`. Model diversity
 supplements fresh context and a frozen artifact; it does not replace them. `CLEAN`

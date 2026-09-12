@@ -1,11 +1,10 @@
 # Portable Review and Frozen Snapshots (V2)
 
-Read this only for portable reviewer setup, snapshot guarantees, or troubleshooting.
-Snapshot publication is Linux-only. The common preflight, normal commands,
-reviewer invocation, and final acceptance gates are owned by
-[`workflow.md`](workflow.md). Strict binding, timing, events, and recovery are in
-[`review-runtime-strict.md`](review-runtime-strict.md) and
-[`review-recovery-strict.md`](review-recovery-strict.md).
+Read this only for portable reviewer setup, snapshot guarantees, or
+troubleshooting. Snapshot publication is Linux-only; common preflight, normal
+commands, invocation, and acceptance gates live in [`workflow.md`](workflow.md).
+Strict lifecycle rules live in [`review-runtime-strict.md`](review-runtime-strict.md)
+and [`review-recovery-strict.md`](review-recovery-strict.md).
 
 Relevant contract sources:
 
@@ -15,23 +14,36 @@ contracts-v2.json:
   artifact_contracts.snapshot_manifest
 ```
 
-## Reviewer boundary
+## Reviewer boundary and budget
 
-Complete the live preflight in `workflow.md` before editing or delegating. The main
-agent remains the only portable writer. `read_only_enforcement` proves a write
-boundary only; `artifact_only_read_enforcement` separately states whether a
-container mount or read allowlist limits readable paths. `none` or `unknown` may
-support portable acceptance, but never a claim of exclusive artifact access or
-confidentiality.
+Complete the live preflight before editing or delegating. Portable mode requires an
+identifiable enforced-read-only reviewer, terminal result delivery, one frozen
+artifact path, and a protected Reviewer wait. The main agent remains the only
+writer. `read_only_enforcement` protects writes; `artifact_only_read_enforcement`
+records whether a mount or allowlist also limits readable paths. Do not claim
+exclusive artifact access without that enforcement.
 
-[`../assets/cdw-reviewer.toml`](../assets/cdw-reviewer.toml) is a custom-agent
-template. With user authorization, copy it to `.codex/agents/cdw-reviewer.toml` in
-the project or `$HOME/.codex/agents/cdw-reviewer.toml` for personal use. A Skill
-cannot install or activate it. Select its configured name, `cdw_reviewer`, not its
-filename. Confirm the effective `sandbox_mode="read-only"` and
-`approval_policy="never"`; parent overrides can change them, and any writable
-override or approved escalation invalidates review. Its request to avoid the live
-workspace is guidance, not a read boundary. Keep secrets out of readable paths.
+Choose the Reviewer profile before freezing and copy all three values into the
+TaskSpec's `execution-budget-v2` object:
+
+| Profile | Use when | `wall_clock_seconds` | `max_turns` | `max_output_bytes` |
+| --- | --- | ---: | ---: | ---: |
+| Standard | genuinely small, low-risk, tightly coupled review | `7200` | `64` | `262144` |
+| Extended | default; broad, cross-cutting, high-risk, or uncertain review | `10800` | `128` | `524288` |
+
+These are ceilings, not work quotas. The Reviewer may return when exact coverage is
+complete, but the runtime must not replace a selected profile with a smaller cap.
+After start, use one foreground blocking wait for the same invocation. Do not set a
+shorter wrapper timeout, poll, inspect moving files, edit, roll over context, or
+send `close`/`cancel`/`interrupt` before a terminal result or protected deadline.
+Only authoritative binding failure, a safety incident, or explicit user cancellation
+is an earlier exception. A host unable to honor this contract is not ready.
+
+At the deadline, preserve the artifact and diagnostics and report
+`REVIEW_UNAVAILABLE` if no usable result exists. Never infer a result from silence,
+empty output, timeout text, or a close acknowledgement. Strict mode may begin its
+runtime-owned stop/recovery path only after the deadline or an actual binding
+failure, and only after confirmed stop may it consider replacement.
 
 ## Create and verify the snapshot
 
@@ -48,55 +60,37 @@ python3 "$CDW_SKILL_DIR/scripts/snapshot_tool.py" verify "$ARTIFACT" \
   --expected-manifest-identity MANIFEST_IDENTITY
 ```
 
-Use a shell variable so placeholders cannot become redirections. Record both
-emitted identities. The helper derives manifest version, entry status and type,
-artifact prefixes, baseline-only types, and bounds from
-`artifact_contracts.snapshot_manifest`.
+Record both emitted identities. The helper enforces a top-level Git worktree and at
+most 128 normalized `review_paths`; records present/deleted entries, exact bytes,
+modes, symlink targets, scoped Git-HEAD bytes, and post-state bytes. A rename is a
+deletion plus an addition. It never follows symlinks or traversal paths, bounds
+file/total/Git output, pins queries to one repository descriptor, disables
+replacement objects and lazy fetches, and rejects races or unavailable descriptor
+operations.
 
-The helper enforces a top-level Git worktree and at most 128 normalized
-`review_paths`. It records present and deleted entries; content hashes, modes, and
-symlink targets; scoped Git-HEAD bytes under `baseline/`; and post-state bytes
-under `files/`. A source rename is a deletion plus an addition. It never follows
-symlinks or traversal paths. It bounds file, total, and Git output; pins source
-traversal and Git queries to one repository descriptor; disables replacement
-objects and lazy fetches; and rejects races or unavailable descriptor operations.
+Git identity uses full attached refs and reserves `DETACHED` for detached HEAD.
+Stage inventory plus raw staged diff preserves intent-to-add, deleted, and untracked
+inventories without porcelain status or worktree conversion. Artifacts are outside
+the repository and owner-only (`0500` directories, `0400` files); publication uses
+Linux `renameat2(RENAME_NOREPLACE)` and fails closed when unavailable.
 
-Sanitized Git identity records attached branches as full refs and reserves
-`DETACHED` for a detached HEAD. It combines the stage inventory with a raw staged
-diff, including intent-to-add, and records deleted and untracked inventories.
-Exact scoped bytes, modes, and symlink targets bind tracked worktree state. The
-helper does not call porcelain status or Git worktree conversion, so clean/process
-filters do not run.
+## Review handoff
 
-Artifacts are owner-only (`0500` directories and `0400` files). Creation verifies
-a same-parent staging tree before publishing it with Linux
-`renameat2(RENAME_NOREPLACE)`, and fails closed when atomic no-clobber publication
-is unavailable.
+Give one fresh reviewer the bounded request, accepted plan, scope, exclusions,
+checks, artifact path, identities, and validated model request. Pause writers first;
+`fork_turns="none"` removes inherited conversation but does not narrow filesystem
+reads. The reviewer should batch reads and focused checks, then return a bounded
+`role-result-v2` when exact coverage is complete.
 
-## Review and acceptance handoff
-
-Pause writers and follow the review and acceptance steps in
-[`workflow.md`](workflow.md). Give one fresh
-reviewer the bounded task and exact verified artifact. `fork_turns="none"` removes
-inherited conversation but does not narrow filesystem reads. The parent validates
-the result and creates the artifact-access and review-coverage records, recomputes
-their digests, and links them with the TaskSpec and result in one review round.
-
-Contract validation shows only that supplied records agree. It does not open the
-snapshot, observe a reviewer, prove sandbox settings or preflight freshness, or
-compare the workspace. `workflow_tool.py accept` performs the artifact, run, and
-scoped-workspace checks, but still leaves the live confirmations to the parent.
-Neither a standalone outcome nor a valid `acceptance-evidence-v2` record is proof
-by itself.
-
-No usable terminal result is `REVIEW_UNAVAILABLE`. A delivered result with invalid
-identity, scope, artifact access, or coverage is `REVIEW_BLOCKED`. Neither accepts
-the work. Portable evidence cannot prove strict conflict-safe updates,
-authoritative stop, or runtime-authored events.
+The parent validates result identity, scope, artifact access, coverage, checks, and
+model provenance; it recomputes artifact-access and review-coverage proof digests
+and links them with the TaskSpec/result in one review round. Contract validation only
+checks supplied records; it does not observe live preflight, sandbox, reviewer, or
+workspace state. `REVIEW_UNAVAILABLE` and `REVIEW_BLOCKED` are never accepting.
 
 ## Strict boundary
 
 Strict mode is opt-in and must stop before mutation unless its authoritative
 preflight is ready. Read [`review-runtime-strict.md`](review-runtime-strict.md)
-before any strict spawn or lifecycle decision. Portable evidence cannot be upgraded
-to strict proof.
+before any strict spawn or lifecycle decision; portable evidence cannot become
+strict proof.

@@ -57,6 +57,24 @@ class ExampleTests(unittest.TestCase):
             "honored",
         )
 
+    def test_reviewer_example_uses_extended_protected_budget(self) -> None:
+        example = json.loads(
+            (ROOT / "examples" / "acceptance_evidence.json").read_text(encoding="utf-8")
+        )
+        task = example["review_rounds"][0]["task_spec"]
+        self.assertEqual(
+            task["budget"],
+            {
+                "version": "execution-budget-v2",
+                "wall_clock_seconds": 10800,
+                "max_turns": 128,
+                "max_output_bytes": 524288,
+            },
+        )
+        self.assertTrue(
+            example["capability_preflight"]["capabilities"]["protected_reviewer_wait"]
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

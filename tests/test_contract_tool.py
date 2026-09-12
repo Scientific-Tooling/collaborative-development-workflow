@@ -433,7 +433,7 @@ class ContractToolTests(unittest.TestCase):
         expected = {
             "impact_scope": "37f2eda6ea211928cf6b3c11d114d359142fda3eaafc5da37c115db5c0d043a3",
             "focused_check": "2bb24f579713cd777c7a596e6e1bd30ca33e9f9ef15eaaa19eee02b84c4df85a",
-            "capability_preflight": "fd8d19b252f44ed09aaae650ad99d0c219dc9e8144b1b0d985553f15f4c98897",
+            "capability_preflight": "ac637b2566248ba244a99e31ded5b2e3514108b205535f0f52e87ae6ad40e3fd",
             "role_result": "ed90fa62120d937471da4f5ab545ab0234297b7753f1d31c1e41d7f2372ea093",
             "workflow_outcome": "fe281cc1bfd24a839e2c48c7ed9a6048c13ae37b3f11aa67d73df1a2b26df827",
             "task_spec": "81aa9462097287f30a37eef80e19d0ed701cee1a3c1ecd5ad32840781b483f76",

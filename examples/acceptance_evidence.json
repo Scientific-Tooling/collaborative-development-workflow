@@ -8,7 +8,8 @@
     "capabilities": {
       "read_only_subagent_identity": true,
       "shared_snapshot_access": true,
-      "terminal_result_delivery": true
+      "terminal_result_delivery": true,
+      "protected_reviewer_wait": true
     },
     "missing": [],
     "authority": "observed_tool_surface",
@@ -60,9 +61,9 @@
         "isolation": "frozen-artifact",
         "budget": {
           "version": "execution-budget-v2",
-          "wall_clock_seconds": 600,
-          "max_turns": 8,
-          "max_output_bytes": 65536
+          "wall_clock_seconds": 10800,
+          "max_turns": 128,
+          "max_output_bytes": 524288
         },
         "resumable": false,
         "model_request": {
@@ -157,8 +158,8 @@
     "review_status": "CLEAN",
     "reason": null,
     "validation_status": "PASSED",
-    "capability_preflight_digest": "fd8d19b252f44ed09aaae650ad99d0c219dc9e8144b1b0d985553f15f4c98897",
-    "final_review_round_digest": "77777f46ba097e556099aea67257d1028a6c33ec260a138d5d9ae9ce8447402b",
+    "capability_preflight_digest": "ac637b2566248ba244a99e31ded5b2e3514108b205535f0f52e87ae6ad40e3fd",
+    "final_review_round_digest": "7b4bed09bdd0cef0cd2d01ad1e67f21cd2d769098777806394a1e8c668471f31",
     "validation_checks": [
       {"id": "full", "status": "PASSED", "summary": "suite passed"}
     ],

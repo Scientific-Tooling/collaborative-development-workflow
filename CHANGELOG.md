@@ -106,6 +106,14 @@ All notable changes to this project are documented here. The repository follows
 - These unreleased ContractV2 changes are not compatible with 2.0.0 TaskSpec,
   preflight, acceptance, or digest values. Regenerate those records with the
   updated helpers instead of adding guessed fields to old evidence.
+- Reviewer execution now defaults to an Extended protected window of 10800 seconds,
+  128 turns, and 524288 output bytes; the parent uses one foreground wait and does
+  not automatically interrupt a live Reviewer before its deadline.
+- Portable and strict review references now share the same budget and
+  non-interruption policy, while strict replacement remains available only after
+  authoritative stop confirmation and sufficient remaining budget.
+- Portable capability preflight now explicitly requires a protected Reviewer wait
+  before independent review can be delegated.
 
 ## [2.0.0] - 2026-09-10
 

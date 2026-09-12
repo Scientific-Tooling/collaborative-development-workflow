@@ -208,7 +208,8 @@
       "portable": [
         "read_only_subagent_identity",
         "terminal_result_delivery",
-        "shared_snapshot_access"
+        "shared_snapshot_access",
+        "protected_reviewer_wait"
       ],
       "strict_additional": [
         "atomic_spawn_binding",

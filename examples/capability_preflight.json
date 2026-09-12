@@ -6,12 +6,14 @@
   "capabilities": {
     "read_only_subagent_identity": false,
     "terminal_result_delivery": false,
-    "shared_snapshot_access": false
+    "shared_snapshot_access": false,
+    "protected_reviewer_wait": false
   },
   "missing": [
     "read_only_subagent_identity",
     "shared_snapshot_access",
-    "terminal_result_delivery"
+    "terminal_result_delivery",
+    "protected_reviewer_wait"
   ],
   "authority": "observed_tool_surface",
   "read_only_enforcement": "unverified",

@@ -69,6 +69,16 @@ Use ordinary language and report:
 - whether work was accepted, or the exact practical reason it was not;
 - a local commit only when explicitly requested and actually created; and
 - remaining risks, caveats, decisions, or authorization needed.
+- requested outcome and changed paths;
+- mode and capability-preflight result;
+- implementation milestones and any delegated roles;
+- snapshot/content identity, reviewer result, and revision rounds;
+- selected Reviewer budget and whether the protected wait was honored;
+- requested and resolved reviewer model policy, including any fallback;
+- focused and full validation commands with outcomes;
+- acceptance-evidence digest, workflow outcome, and exact reason if not accepted;
+- local commit only if explicitly requested and actually created; and
+- remaining risks, caveats, user decisions, or authorization still needed.
 
 Add internal evidence only when requested, required by the repository, or useful
 for a blocked result. It may include mode, preflight `run_id` and read-only

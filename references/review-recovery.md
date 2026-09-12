@@ -7,9 +7,11 @@ defined only in [`contracts-v2.json`](contracts-v2.json).
 
 ## Portable review failure
 
-Portable mode has no runtime-asserted replacement or takeover semantics. If the
-reviewer does not produce a usable terminal result, the parent may finish its own
-focused and full validation, preserve the snapshot and diagnostics, and hand off:
+Portable mode has no runtime-asserted replacement or takeover semantics. Wait through
+the selected protected Reviewer window first; an earlier wrapper timeout, empty
+response, silence, or close acknowledgement does not begin recovery. If the reviewer
+then does not produce a usable terminal result, the parent may finish its own focused
+and full validation, preserve the snapshot and diagnostics, and hand off:
 
 ```text
 outcome = NOT_ACCEPTED

@@ -18,6 +18,20 @@ python3 "$CDW_SKILL_DIR/scripts/contract_tool.py" validate \
 one subtree. Exit `0` means valid; exit `2` means invalid input or contract, with a
 machine-readable JSON diagnostic. V1 names are unsupported, and a record must not
 mix versions.
+The [complete portable example](../examples/acceptance_evidence.json) contains a
+reviewer TaskSpec. `mode` selects portable or strict operation; `binding_mode`
+separately records provisional transport binding or runtime-atomic binding.
+Every newly produced delegated task includes a `model-request-v2` selected under
+[`model-selection.md`](model-selection.md). The request records strategy, requested
+model/effort, fallback, and reviewer diversity without prescribing a global model.
+It is schema-optional only for compatibility with 2.0.0 records. `model_profile`
+records profile data exposed at dispatch.
+`budget` is an `execution-budget-v2` object. The parent preassigns proof IDs and
+supplies the snapshot ID (the manifest identity), content identity, and artifact
+path; the reviewer does not invent them. For a reviewer, select the Standard or
+Extended budget profile in [`review-runtime.md`](review-runtime.md) before freezing
+and copy all three caps into this object. The budget is a protected execution
+window, not a signal to interrupt the reviewer early.
 
 ## Task specifications
 
@@ -77,6 +91,92 @@ unique within their collections.
 ## Capability preflight
 
 Before any edit or spawn, create and validate a `capability_preflight`:
+Before any edit or spawn, record a `capability-preflight-v2` value and validate it.
+Portable mode uses `modes.required_capabilities.portable`, including the protected
+Reviewer wait capability; strict mode adds
+`modes.required_capabilities.strict_additional`. `contract_tool.py` deliberately
+does not attest `STRICT_READY`: the authoritative runtime adapter must supply and
+validate that proof.
+
+Capability maps contain exactly the keys required by their selected mode. Portable
+records do not carry placeholder values for strict-only capabilities.
+
+The portable observation may be based on the exposed tool surface. A strict result
+must be an authoritative runtime record. `NOT_READY` blocks the requested mode;
+strict is never silently downgraded to portable.
+
+## Status and runtime references
+
+Status values and role-specific success rules are declared only in
+`contracts-v2.json: statuses`. `BLOCKED` is a bounded role result and must not be
+inferred from silence. `REVIEW_UNAVAILABLE` means no usable independent reviewer
+result was delivered; `REVIEW_BLOCKED` means a result exists but its evidence cannot
+be validated. Both are non-accepting in portable mode.
+
+Runtime event shapes are declared in `contracts-v2.json`; strict binding, timing,
+and lifecycle semantics belong to
+[`review-runtime-strict.md`](review-runtime-strict.md). Portable review result
+classification belongs to [`review-runtime.md`](review-runtime.md). The machine records are
+`records.runtime_completion_event`, `records.runtime_terminal_event`,
+`records.runtime_stop_event`, and `records.runtime_event_sequence` in
+`contracts-v2.json`; a model-written completion string is never an event.
+
+## Role results
+
+Every `role-result-v2` record has these bounded common fields:
+
+```text
+ROLE, STATUS, SUMMARY, COMPLETED_SCOPE, CHANGED_PATHS
+CHECKS, RISKS, BLOCKER_OR_INPUT, ATTENTION_REQUIRED, NEXT_ACTION
+```
+
+It may include runtime/parent provenance fields such as task and invocation IDs,
+snapshot/content identity, preassigned artifact-access and coverage proof IDs, reviewed
+paths, findings, the bounded closed `role_payload`, and the actual model profile. A
+child may repeat provenance for correlation but cannot invent or repair runtime-owned
+fields.
+
+When a successful reviewer task carries `model_request`, its result profile binds
+the resolved `model`, `effort`, and `selection_outcome` (`honored`, `fallback`, or
+`unknown`). The review-round validator rejects a disallowed fallback, an
+unattested fail-closed selection, a mismatched honored explicit request, or an
+unsatisfied `different_required` comparison.
+
+Role success is selected by role in the JSON definition. Read-only roles report
+`changed_paths=[]`; `REVIEW_UNAVAILABLE` is a parent disposition, not a child
+result. A reviewer `CLEAN` binds the task/run, snapshot, content, and proof IDs,
+covers every review path, passes every reported check, and contains no open finding
+or risk. `FINDINGS` includes at least one bounded actionable finding inside the
+reviewed paths. A clean test result alone is never a review result.
+
+## Report and data boundary
+
+The ledger and runtime event journal contain metadata only: IDs, roles, paths,
+states, hashes, budgets, timestamps, commands, and outcomes. A bounded report
+artifact may contain a short summary, check results, and path/line findings. It must
+not contain raw prompts, credentials, secrets, complete source files, embeddings,
+or an unbounded model transcript. Scoped source content may exist only in a private
+review artifact and is never copied into the ledger or handoff.
+
+## Canonical JSON and digest
+
+For every helper input:
+
+1. decode UTF-8 and reject malformed text, duplicate object keys, and non-finite
+   numbers;
+2. validate the closed V2 record and all bounds;
+3. normalize repository paths and sort set-like collections;
+4. encode with UTF-8, `ensure_ascii=false`, lexicographically sorted object keys,
+   compact separators, and no insignificant whitespace; and
+5. hash the exact bytes of `{"kind": KIND, "record": RECORD}` with SHA-256 after
+   prepending the `record` domain prefix from `contracts-v2.json`.
+
+ContractV2 currently uses integer numeric fields only. Finite floating-point
+values are not a contract value; rejecting them avoids cross-runtime number-format
+ambiguity. Unicode content is preserved as supplied; no implicit locale or Unicode
+normalization is performed.
+
+The command interface is:
 
 ```bash
 python3 "$CDW_SKILL_DIR/scripts/contract_tool.py" describe \

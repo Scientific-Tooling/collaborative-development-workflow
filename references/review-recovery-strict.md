@@ -35,11 +35,13 @@ parent.
 
 ## Cancellation and timeout recovery
 
-An interrupt, close, or explicit cancel is a request. Any such cancellation request
-starts the bounded recovery sequence immediately, exactly once; it is not gated on
-the initial attempt deadline. A timeout starts the same sequence when the fixed
-attempt deadline is reached. The deadline-triggered path is reserved for timeouts,
-and a recovery already started by cancellation must not be duplicated:
+The parent/runtime must not automatically interrupt a Reviewer during its protected
+budget. An interrupt, close, or explicit cancel is a request and is permitted before
+the deadline only for an authoritative binding failure, a safety incident, or an
+explicit user cancellation. A timeout starts the bounded recovery sequence only
+when the fixed attempt deadline is reached. The deadline-triggered path is reserved
+for that timeout, and a recovery already started by an earlier authorized
+cancellation must not be duplicated:
 
 1. CAS `overlay=CANCEL_REQUESTED` on the authoritative row while retaining owner,
    lock, identity, artifact, and deadline;
