@@ -114,6 +114,12 @@ All notable changes to this project are documented here. The repository follows
   authoritative stop confirmation and sufficient remaining budget.
 - Portable capability preflight now explicitly requires a protected Reviewer wait
   before independent review can be delegated.
+- Small deterministic changes now have an explicit fast path that avoids auxiliary
+  role delegations and unnecessary context handoffs while retaining independent
+  review and acceptance gates.
+- Scope guidance now favors file-level `review_paths`, and validation guidance
+  avoids rerunning a focused check when the prescribed full command demonstrably
+  covers it.
 
 ## [2.0.0] - 2026-09-10
 

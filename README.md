@@ -45,6 +45,11 @@ baseline is 2.0.0; see the [changelog](CHANGELOG.md) for unreleased changes and 
 - refusal to accept work when independent review evidence is unavailable; and
 - a local commit only when explicitly requested and safe from overlapping old edits.
 
+For small, deterministic changes, the fast path keeps planning, implementation,
+focused checks, and full validation in the main agent and delegates only one
+independent Reviewer. Planner, researcher, verifier, and context-handoff work is
+reserved for concrete uncertainty or an actual continuation need.
+
 ## Install into Codex
 
 For a personal source checkout while developing the Skill:

@@ -76,6 +76,9 @@ looks like a file location, prefix it with `file:`; for example,
 `file:module:parser` names the root file `module:parser`. Snapshots use
 `review_paths`. Add other supporting material needed for review. This scope design
 does not prove that the reviewer is unable to read the live workspace.
+Prefer explicit files; a directory scope is justified only when the behavior
+genuinely spans its contents. Unnecessary directory scope increases artifact size
+and review time.
 
 Paths are repository-relative POSIX text. The helper converts backslashes to `/`,
 removes empty and dot components, sorts set-like collections, and rejects absolute
@@ -90,7 +93,6 @@ unique within their collections.
 
 ## Capability preflight
 
-Before any edit or spawn, create and validate a `capability_preflight`:
 Before any edit or spawn, record a `capability-preflight-v2` value and validate it.
 Portable mode uses `modes.required_capabilities.portable`, including the protected
 Reviewer wait capability; strict mode adds

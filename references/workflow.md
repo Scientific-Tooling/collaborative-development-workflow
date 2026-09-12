@@ -4,8 +4,7 @@ This file owns live preflight and acceptance. Contract fields are in
 [`contracts-v2.json`](contracts-v2.json); snapshot guarantees are in
 [`review-runtime.md`](review-runtime.md).
 
-Set `CDW_SKILL_DIR` to the absolute directory containing the selected `SKILL.md`,
-not from the target repository's working directory.
+Set `CDW_SKILL_DIR` to the selected `SKILL.md` directory, not the target repository.
 
 ## 1. Inspect, preflight, and scope
 
@@ -29,42 +28,36 @@ Before any target-repository edit or delegation:
    `inherit`/`fail`/`same_allowed`; Reviewer defaults are
    `runtime_default`/`fail`/`same_allowed`.
 
-Create starter records outside the repository:
-
-```bash
-python3 "$CDW_SKILL_DIR/scripts/workflow_tool.py" init \
-  --output /tmp/cdw-task-1 --root /absolute/path/to/repository \
-  --changed-path src/example.py --review-path tests/test_example.py
-```
-
-`init` emits `NOT_READY`; replace placeholders only with observed facts and
-validate the preflight. Portable readiness requires Linux snapshots, an
-identifiable enforced-read-only Reviewer, terminal delivery, shared snapshot
-access, and a protected wait. Saved records are not live checks. Confirm effective
+Use `workflow_tool.py init` to create starter records outside the repository;
+it emits `NOT_READY`. Replace placeholders only with observed facts and validate
+the preflight. Portable readiness requires Linux snapshots, an identifiable
+enforced-read-only Reviewer, terminal delivery, shared snapshot access, and a
+protected wait. Saved records are not live checks. Confirm effective
 `custom_agent_sandbox` settings, record `artifact_only_read_enforcement`, and
-match the preflight `run_id` to the review TaskSpec.
+match the preflight `run_id` to the review TaskSpec. Classify roles before work:
+use the fast path only for at most five explicit files in one component with
+deterministic criteria and no API/schema/generated/integration/security or
+concurrency/lifecycle risk. The main agent then plans, writes, checks, and delegates
+only the mandatory independent Reviewer; broad or high-risk work may add one
+bounded role for a concrete uncertainty.
 
-Render an ordinary delegation only after validating its final TaskSpec:
-
-```bash
-python3 "$CDW_SKILL_DIR/scripts/workflow_tool.py" prompt \
-  --task-spec /absolute/path/to/task-spec.json
-```
-
-Use the returned prompt with repository instructions and live runtime facts.
+Render an ordinary delegation with `workflow_tool.py prompt` only after validating
+its final TaskSpec, then add repository instructions and live runtime facts.
 
 ## 2. Plan and implement
 
 Record scope, dependencies, milestones, ownership, checks, exclusions, risks,
-integration order, and one main-agent-owned full-validation command. A delegated
-plan cannot expand scope. The main agent is the only portable writer; use
-[`coordination-protocol.md`](coordination-protocol.md) for multiple assignments or
-worktrees. Review only the integrated identity, never a moving workspace.
+integration order, and the main-agent full-validation command. A delegated plan
+cannot expand scope. The main agent is the only portable writer; use
+[`coordination-protocol.md`](coordination-protocol.md) for worktrees and review
+only the integrated identity.
 
 ## 3. Validate, freeze, and review
 
-Run all focused checks and full validation, inspect diff/status, and remove only
-task-created disposable output. Choose the Reviewer profile from
+Run all focused checks and full validation, inspecting diff/status and removing
+only task-created disposable output. If full validation demonstrably subsumes a
+focused check, record that coverage rather than invoking the same command twice.
+Choose the Reviewer profile from
 [`review-runtime.md`](review-runtime.md), freeze exactly `review_paths` outside the
 repository, and record both emitted identities:
 
@@ -79,18 +72,15 @@ python3 "$CDW_SKILL_DIR/scripts/snapshot_tool.py" verify "$ARTIFACT" \
   --expected-manifest-identity MANIFEST_IDENTITY
 ```
 
-Pause all writers and edits. Bind the selected budget values in the Reviewer
-TaskSpec, start one fresh read-only Reviewer for the exact artifact, and use one
-foreground blocking wait for its full protected window. Do not poll, probe, edit,
-cancel, interrupt, or roll over context while it is live; a wrapper yield resumes
-the same wait. Confirm effective read-only settings and the actual artifact read
-boundary. A host unable to honor the selected wait is not Reviewer-ready.
+Pause writers. Bind the selected budget in the Reviewer TaskSpec, start one fresh
+read-only Reviewer for the exact artifact, and use one foreground wait for its full
+protected window. Do not poll, edit, cancel, interrupt, or roll over live context;
+confirm read-only settings and artifact boundary. An incapable host is not ready.
 
 ContractV2 accepts one integrated Reviewer; partial lanes cannot combine into
-`CLEAN`. Validate identity, scope, artifact access, coverage, checks, and model
-provenance. Route findings, malformed output, and unavailable review to
-[`review-recovery.md`](review-recovery.md). `REVIEW_UNAVAILABLE` or
-`REVIEW_BLOCKED` yields `NOT_ACCEPTED`, never a commit.
+`CLEAN`. Validate identity, scope, access, coverage, checks, and provenance; route
+findings or unavailable review to [`review-recovery.md`](review-recovery.md).
+`REVIEW_UNAVAILABLE` and `REVIEW_BLOCKED` yield `NOT_ACCEPTED`.
 
 ## 4. Accept
 
@@ -108,11 +98,10 @@ After review, do only read-only acceptance work:
      --root /absolute/path/to/repository --expected-run-id RUN_ID
    ```
 
-Exit `0` means consistent evidence, reopened artifact, matching claimed base Git
-identities, and a workspace matching the declared review scope. Exit `1` means a
-scope mismatch; `2` means invalid input, binding, record, or artifact. The helper
-cannot observe Reviewer invocation/sandbox or prove preflight timing and always
-leaves `helper_confirmed_acceptance=false`; confirm every live item yourself.
+Exit `0` means consistent evidence, reopened artifact, matching base identities,
+and a matching scoped workspace; `1` means scope mismatch and `2` invalid input,
+binding, record, or artifact. The helper cannot observe Reviewer invocation,
+sandbox, or preflight timing and leaves `helper_confirmed_acceptance=false`.
 
 Do not run a mutating formatter, generator, or test after freezing. Any changed
 scoped content or Git identity invalidates review and requires new validation and

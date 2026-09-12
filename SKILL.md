@@ -52,8 +52,10 @@ exclusive artifact access or confidentiality.
 
 ## Efficiency defaults
 
-- Keep small, tightly coupled changes in the main agent and delegate only the
-  required independent Reviewer.
+- Use the fast path for at most five explicit files in one component with
+  deterministic criteria and no API/schema/generated/integration/security or
+  concurrency/lifecycle risk; the main agent plans, writes, checks, and delegates
+  only one independent Reviewer.
 - For broad/high-risk changes, add only roles resolving concrete uncertainties;
   do not duplicate validation or split acceptance lanes.
 - Batch discovery/checks, freeze one snapshot per round, and send a bounded packet.

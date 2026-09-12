@@ -1,7 +1,7 @@
 interface:
   display_name: "Collaborative Development Loop"
   short_description: "Linux-only changes with frozen review"
-  default_prompt: "Use $collaborative-development-workflow on Linux to implement and validate this coding task, then have an enforced read-only agent review a frozen snapshot."
+  default_prompt: "Use $collaborative-development-workflow on Linux to implement and validate this coding task, then have an enforced read-only agent review a frozen snapshot. For small deterministic changes, use the main-agent fast path and delegate only the Reviewer with its full selected protected budget."
 
 policy:
   allow_implicit_invocation: false
