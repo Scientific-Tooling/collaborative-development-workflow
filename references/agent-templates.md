@@ -1,145 +1,112 @@
-# Agent Prompt Templates (V2)
+# Agent Prompt Guidance (V2)
 
-Read this reference only while constructing a delegated prompt. The closed result
-shape and all allowed statuses are defined in
-[`contracts-v2.json`](contracts-v2.json); do not copy a second status table into a
-prompt or template.
+For a standard delegated prompt, render it from a validated TaskSpec:
 
-## Shared prompt preamble
+```bash
+python3 "$CDW_SKILL_DIR/scripts/workflow_tool.py" prompt \
+  --task-spec /absolute/path/to/task-spec.json
+```
 
-Use this shape and fill only bounded task-specific values:
+The command returns a JSON report whose `prompt` value includes the canonical task
+data, role limits, current allowed statuses, and required result fields. Prefer it
+to a handwritten template. Read this reference only to understand or add bounded
+role-specific behavior. The closed result shape remains authoritative in
+[`contracts-v2.json`](contracts-v2.json).
 
-> You are the bounded `<ROLE>` for `<TASK>`. Work only within the supplied read,
-> write, impact, and exclusion scopes, repository instructions, baseline,
-> acceptance criteria, mode, and focused checks. Do not infer missing scope from
-> unrelated files. Preserve unrelated changes. Do not commit, push, deploy,
-> install, reset, clean, delete, or mutate an external service. Return a
-> `role-result-v2` record using the status permitted for your role by
-> `contracts-v2.json`. Runtime-owned identity, timing, artifact, and coverage
-> fields are supplied by the parent/runtime; never invent or repair them.
+## Rules for every role
 
-In portable mode every delegate is read-only. A strict writer may edit only when the
-runtime has already supplied an atomic binding and the TaskSpec explicitly grants a
-write scope. The parent waits for one terminal result; it does not poll, inspect a
-moving artifact, or interpret liveness text as completion. Do not rely on an inherited
-model or effort unless the validated `model-request-v2` explicitly selects
-`inherit`. The parent resolves the request under
-[`model-selection.md`](model-selection.md) before spawn. Record the supplied
-resolved profile and selection outcome; use `unknown` when the runtime does not
-expose a value, and never invent provenance.
+Any added instruction must keep these rules:
+
+- Work only within the TaskSpec's read, write, impact, and exclusion scopes,
+  repository instructions, baseline, criteria, mode, and focused checks. Do not
+  infer missing scope. Preserve unrelated changes.
+- Do not commit, push, deploy, install, reset, clean, broadly delete, or change an
+  external service.
+- In portable mode, every delegate must have an enforced read-only sandbox. A
+  prompt-only promise is not enough. A strict implementer may edit only after an
+  atomic runtime binding and an explicit write scope.
+- Wait for one terminal result. Do not poll, inspect a changing artifact, or treat
+  liveness text as completion.
+- Resolve the model request under [`model-selection.md`](model-selection.md)
+  before spawn. Inherit only when requested. Record supplied model provenance and
+  use `unknown` only when the runtime does not expose a value.
+- Return one valid `role-result-v2` JSON object with no Markdown wrapper. Lists
+  remain arrays when empty, and read-only roles return `changed_paths: []`.
+- Never invent or repair runtime-owned identity, timing, artifact, or coverage
+  fields. Do not include raw source, prompts, credentials, secrets, embeddings, or
+  a full transcript in a result.
+
+Use the helper's generated prompt without weakening these rules. Add only facts or
+instructions needed for the assigned task.
 
 ## Planner
 
-Read-only inspect the declared impact scope and direct callers/consumers. Produce the
-smallest dependency-aware plan or critique. Do not edit or run repository-wide
-checks.
-
-Return a `role-result-v2` with:
-
-```text
-role: planner
-status: role success or a ContractV2 common exceptional status
-summary, completed_scope, changed_paths: []
-checks, risks, blocker_or_input, attention_required, next_action
-role_payload: milestones, prerequisites, write scope, integration order,
-              mode, exclusions, focused checks, risks, and material decisions
-```
-
-The plan is evidence for the parent and cannot authorize scope expansion or an
-external mutation.
+Use `role: planner`. Read only the declared impact scope and direct callers and
+consumers. Produce the smallest dependency-aware plan or critique. Do not edit or
+run repository-wide checks. Put milestones, prerequisites, write scope,
+integration order, mode, exclusions, focused checks, risks, and material decisions
+in `role_payload`. The plan cannot expand scope or authorize an external change.
 
 ## Researcher
 
-Read-only answer one bounded research question from the supplied sources or paths.
-Do not edit, decide for the user, or run heavyweight validation.
+Use `role: researcher`. Answer one focused question from supplied sources or
+paths. Do not edit, decide for the user, or run heavyweight validation.
 
-Return a `role-result-v2` with:
-
-```text
-role: researcher
-status: role success or a ContractV2 common exceptional status
-summary, completed_scope, changed_paths: []
-checks, risks, blocker_or_input, attention_required, next_action
-role_payload: bounded research scope, evidence references, open questions,
-              and recommendation
-```
-
-Do not copy raw source, prompts, credentials, or an unbounded transcript into the
-report.
+For discovery before final scope, receive a preliminary read scope, explicit
+exclusions, a focused question, and an output limit. Trace only enough callers,
+consumers, tests, and configuration to suggest final impact and review paths.
+Label them as suggestions; the parent validates final scope before any edit. Put
+the limited scope, evidence references, open questions, and recommendation in
+`role_payload`.
 
 ## Implementer
 
-Implement exactly one accepted milestone in the declared write scope. In portable
-mode do not edit: the main agent owns all writes. In strict mode edit only after
-runtime-atomic binding. Add focused tests when useful and run only focused checks.
-If the milestone is oversized, stop at the last coherent checkpoint and report the
-bounded exceptional state rather than starting a second milestone.
+Use `role: implementer`. Implement one accepted milestone within the write
+scope. Portable mode keeps all edits with the main agent; the prompt helper rejects
+a portable delegated implementer. In strict mode, edit only after runtime-atomic
+binding. Add useful focused tests and run only focused checks. If the milestone is
+too large, stop at the last coherent checkpoint and report the allowed incomplete
+state instead of starting another milestone. Put the milestone, remaining risks,
+and next milestone in `role_payload`.
 
-Return a `role-result-v2` with:
-
-```text
-role: implementer
-status: role success or a ContractV2 common exceptional status
-summary, completed_scope, changed_paths, checks, risks
-blocker_or_input, attention_required, next_action
-role_payload: milestone, remaining risks, and next milestone
-```
-
-Never commit, push, deploy, install, reset, clean, delete unrelated files, or run a
-repository-wide suite on behalf of the parent.
+Do not run a repository-wide suite on the parent's behalf.
 
 ## Verifier
 
-Read-only run only the assigned focused checks for the changed paths and immediate
-callers. Do not repair files, broaden scope, or declare final acceptance.
-
-Return a `role-result-v2` with:
-
-```text
-role: verifier
-status: role success or a ContractV2 common exceptional status
-summary, completed_scope, changed_paths: []
-checks, risks, blocker_or_input, attention_required, next_action
-role_payload: verification results and reproducible failures
-```
-
-The parent owns full validation and acceptance.
+Use `role: verifier`. In a read-only sandbox, run only assigned focused checks for
+changed paths and immediate callers. Do not repair files, broaden scope, or declare
+final acceptance. Put reproducible failures and verification results in
+`role_payload`. The parent owns full validation and acceptance.
 
 ## Reviewer
 
-Read-only review the exact immutable artifact identified by `snapshot_id` and
-`content_identity`. Reconstruct the frozen scoped diff by pairing `baseline/` Git-HEAD
-entries with post-state `files/` entries, including deleted and untracked paths; then
-inspect every declared review path, including named direct callers/consumers. Check
-correctness, regressions, edge cases, security/privacy, performance/accessibility
-when relevant, test adequacy, and scope.
-Do not edit or review a moving workspace. Request a fresh context with
-`fork_context=false` when the runtime exposes that control.
-Apply the TaskSpec's reviewer model-independence policy against its
-`comparison_model`. Model diversity supplements fresh-context and frozen-artifact
-independence; it does not replace them.
+Use `role: reviewer`. In a read-only sandbox, review the exact immutable artifact
+named by `snapshot_id` and `content_identity`. Reconstruct the frozen scoped diff
+by pairing Git-HEAD entries in `baseline/` with post-state entries in `files/`,
+including deleted and untracked paths. Inspect every review path and named direct
+caller or consumer. Check correctness, regressions, edge cases, security and
+privacy, test adequacy, scope, and relevant performance or accessibility concerns.
 
-Return a `role-result-v2` with:
+Do not review a changing workspace. Start without the parent's conversation and
+receive only the review task and artifact. In the current collaboration adapter,
+`fork_turns="none"` requests no inherited history; it does not restrict file
+reads. Only a runtime container mount or read allowlist can enforce artifact-only
+access.
 
-```text
-role: reviewer
-status: a ContractV2 review status or common exceptional status
-summary, completed_scope, changed_paths: []
-mode, base_snapshot, base_content_identity, snapshot_id, content_identity,
-artifact_access_proof,
-review_coverage_proof, reviewed_paths, checks, risks, findings, blocker_or_input,
-attention_required, next_action
-```
+Apply the reviewer-independence policy to `comparison_model`. Model diversity
+supplements fresh context and a frozen artifact; it does not replace them. `CLEAN`
+requires nonempty reviewed paths, passed checks, and no open finding or risk.
+`FINDINGS` requires size-limited findings with a location, evidence, impact,
+status, and concrete fix. If the artifact is unreadable or scope cannot be
+completed, return the allowed blocked result. The parent still verifies identities
+and proofs. A reviewer cannot accept the change or authorize a commit.
 
-`CLEAN` requires nonempty reviewed paths, passed checks, and no open finding or
-risk. `FINDINGS`
-requires bounded findings with location, evidence, impact, status, and a concrete
-fix. If the artifact cannot be read or the assigned scope cannot be completed,
-return the appropriate review-blocked result; the parent still verifies the final
-identity and proof. A reviewer cannot claim acceptance or authorize a commit.
+After validator errors, make at most one format-only correction in that review
+round. Restate the same result; do not perform new analysis, change the conclusion,
+invent proof, or revise findings to satisfy the schema.
 
 ## Review-set boundary
 
-The current public V2 records support one integrated reviewer. Do not split an
-acceptance review into lanes: there is no public lane-assignment or aggregate-proof
-shape, so multiple partial results cannot be promoted to `CLEAN` coverage.
+V2 supports one integrated reviewer. Do not divide an acceptance review into
+lanes: there is no public lane-assignment or aggregate-proof record, so partial
+results cannot become `CLEAN` coverage.

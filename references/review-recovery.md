@@ -17,10 +17,16 @@ reason = REVIEW_UNAVAILABLE
 commit = forbidden
 ```
 
-If a result arrives but its snapshot, scope, artifact, or report shape cannot be
-validated, classify it as `REVIEW_BLOCKED` and use the same non-accepting handoff.
-Do not call a wrapper timeout, empty result, silence, or close acknowledgement a
-failure, success, cancellation, or stop proof.
+If a bounded substantive review arrives as malformed JSON, the parent may give the
+same reviewer one format-correction request. Supply the validator errors and ask it
+to restate the same result in the required shape. This does not count as another
+review round. It may not change the conclusion, add analysis, invent missing
+artifact access or coverage, change scope, or switch agents. If that one correction
+is still invalid—or if the original result has a snapshot, scope, artifact,
+identity, or coverage problem—classify it as `REVIEW_BLOCKED` and use the same
+non-accepting handoff. Empty output and a missing usable review do not qualify for
+format correction; they are `REVIEW_UNAVAILABLE`. Do not call a wrapper timeout,
+silence, or close acknowledgement a failure, success, cancellation, or stop proof.
 
 ## Findings-driven revision
 

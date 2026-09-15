@@ -1,170 +1,144 @@
 # Workflow and Acceptance (V2)
 
-Read this reference for the full plan → implement → review → accept → optional
-commit sequence. Statuses and record fields come from
-[`contracts-v2.json`](contracts-v2.json); portable artifact mechanics live in
-`review-runtime.md`, while strict-only runtime and recovery mechanics live in
-`review-runtime-strict.md` and `review-recovery-strict.md`.
+This file owns live preflight and acceptance. Contract fields are in
+[`contracts-v2.json`](contracts-v2.json); detailed snapshot guarantees are in
+[`review-runtime.md`](review-runtime.md).
 
-## 1. Analyze, establish scope, and preflight
+Set `CDW_SKILL_DIR` to the absolute directory containing the selected `SKILL.md`,
+not from the target repository's working directory.
 
-Before editing or delegating:
+## 1. Inspect, preflight, and scope
 
-1. Restate the requested outcome and observable acceptance criteria.
-2. Read applicable `AGENTS.md` files, project docs, likely paths, direct callers and
-   consumers, mapped tests/configuration, and prescribed validation commands.
-3. Record Git status, branch, HEAD, index state, and the baseline boundary. Preserve
-   all pre-existing staged, unstaged, and untracked work.
-4. Define a canonical `ImpactScopeV2`, explicit exclusions, risks, dependencies, and
-   focused `FocusedCheckV2` records. Do not silently truncate a scope.
-5. Select `portable` by default, or `strict` only when the user explicitly requests
-   it. Validate a `capability-preflight-v2` record before any mutation or spawn.
-6. Before each delegation, resolve a `model-request-v2` under
-   [`model-selection.md`](model-selection.md) and include it in the TaskSpec.
+Before any target-repository edit or delegation:
 
-Portable is ready only when identifiable read-only subagents, terminal result
-delivery, and shared snapshot access are observable. Strict additionally needs the
-authoritative runtime capabilities in `review-runtime-strict.md`. A missing strict
-capability stops before mutation; it is never a portable fallback.
+1. Restate the outcome and acceptance criteria. Read applicable `AGENTS.md`, project
+   guidance, likely paths and consumers, tests, configuration, and validation.
+2. Record Git status, branch, HEAD, index, and baseline. Preserve all existing work
+   and report overlap with required files.
+3. For broad or unclear work, use only the bounded discovery procedure in
+   [`coordination-protocol.md`](coordination-protocol.md). Its provisional scope and
+   separate run ID cannot become acceptance evidence.
+4. Before editing, finalize `ImpactScopeV2`, risks, dependencies, checks,
+   exclusions, and acceptance target. Put every relevant path-shaped caller,
+   consumer, test, and configuration item in `review_paths`. Expand only for a
+   concrete reason.
+5. Default to `portable`. For requested `strict` mode, first follow
+   [`review-runtime-strict.md`](review-runtime-strict.md); missing capability stops
+   before mutation and never causes a portable fallback.
+6. Put `model-request-v2` in every delegated TaskSpec. Normal non-reviewer defaults
+   are `inherit` / `fail` / `same_allowed`; reviewer defaults are
+   `runtime_default` / `fail` / `same_allowed`. Read
+   [`model-selection.md`](model-selection.md) only for an explicit model or effort,
+   fallback, strict selection, or reviewer diversity.
 
-If required files overlap pre-existing edits, report the overlap before changing
-them. If the baseline index has staged changes, record their metadata now; this will
-later make the optional commit gate refuse index surgery.
+To create starter records outside the repository:
 
-## 2. Plan
+```bash
+python3 "$CDW_SKILL_DIR/scripts/workflow_tool.py" init \
+  --output /tmp/cdw-task-1 --root /absolute/path/to/repository \
+  --changed-path src/example.py --review-path tests/test_example.py
+```
 
-Use main-agent planning for small, clear, tightly coupled work. For broad,
-ambiguous, or high-risk work, use one bounded read-only planner or critic. The
-accepted plan records:
+`init` emits `NOT_READY`. Replace placeholders only with observed facts, then
+validate `capability-preflight-v2`. Portable readiness requires Linux snapshots,
+an identifiable enforced-read-only reviewer, terminal result delivery, and shared
+snapshot access. Prompts, examples, and saved `ready` records are not live checks.
+The `run_id` must match the review TaskSpec. `custom_agent_sandbox` is truthful only
+after that installed agent and its effective settings are confirmed; `unverified`
+cannot be ready. Record the actual `artifact_only_read_enforcement`; it does not
+gate readiness, and read-only alone does not prove exclusive artifact access.
 
-- exact or likely paths and the V2 impact scope;
-- dependencies, milestones, write ownership, mode, isolation, and integration order;
-- focused checks, validation owner, exclusions, risks, and material decisions;
-- model-selection strategy, fallback, and reviewer diversity policy; and
-- one prescribed full-validation command and its main-agent owner.
+For an ordinary delegation, validate and render the final TaskSpec:
 
-A delegated planner returns a ContractV2 role result. Treat it as evidence, not as
-authority to expand scope. Pause at the planning gate for an unanswered user
-decision that changes safety, behavior, scope, cost, or authorization.
+```bash
+python3 "$CDW_SKILL_DIR/scripts/workflow_tool.py" prompt \
+  --task-spec /absolute/path/to/task-spec.json
+```
 
-## 3. Implement bounded milestones
+Use the returned `prompt`; the parent also supplies applicable repository
+instructions and live runtime facts. [`agent-templates.md`](agent-templates.md) is
+only a fallback/customization path and cannot weaken TaskSpec scope or result shape.
 
-The main agent is the sole writer in portable mode. A strict implementer may write
-only after runtime-atomic binding and only within its declared scope. Read-only
-delegates may plan, research, verify, or review a supplied immutable artifact.
+## 2. Plan and implement
 
-Each writer preserves unrelated changes, runs focused checks, stops at a coherent
-checkpoint, and returns a V2 role result. It must not commit, push, deploy, install,
-reset, clean, delete, or perform unrelated work. The parent verifies actual changed
-paths, content identity, checks, and resolved model-selection evidence before
-integrating any checkpoint.
+Record scope, dependencies, milestones, ownership, checks, exclusions, risks,
+integration order, and one main-agent-owned full-validation command. A delegated
+plan cannot expand scope. Pause for decisions changing safety, behavior, scope,
+cost, or authorization.
 
-For a large change, integrate one coherent milestone at a time and create a new
-integrated identity before review. Do not let a child worktree or a moving workspace
-become the review input.
+The main agent is the only portable writer. Change only declared work and validate
+child results. For multiple assignments or worktrees, follow
+[`coordination-protocol.md`](coordination-protocol.md). Review only the integrated
+identity, never a moving workspace or child worktree.
 
-## 4. Validate, freeze, and review
+## 3. Validate, freeze, and review
 
-After implementation:
+Run every focused check and full validation. Inspect all diff/status and remove
+only task-created disposable output. Freeze exactly `review_paths` outside the
+repository, then record and verify both emitted identities:
 
-1. run every required focused check and the repository-prescribed full validation;
-2. inspect the resulting diff/status and remove only task-created disposable output;
-3. freeze exactly `ImpactScopeV2.review_paths` with `snapshot_tool.py` outside the repository;
-4. record the emitted content and manifest identities, then run `verify` with both
-   values as expected-identity arguments;
-5. pause all writers and main-agent edits; and
-6. start one fresh, read-only reviewer context for the exact artifact, using
-   `fork_context=false` when the runtime exposes that option, and apply the
-   TaskSpec's recorded model request.
+```bash
+TASK_ID=task-1
+ARTIFACT="/tmp/cdw-review-${TASK_ID}"
+python3 "$CDW_SKILL_DIR/scripts/snapshot_tool.py" create /absolute/path/to/repository \
+  --scope /absolute/path/to/task-scope.json --output "$ARTIFACT"
+python3 "$CDW_SKILL_DIR/scripts/snapshot_tool.py" verify "$ARTIFACT" \
+  --scope /absolute/path/to/task-scope.json \
+  --expected-content-identity CONTENT_IDENTITY \
+  --expected-manifest-identity MANIFEST_IDENTITY
+```
 
-ContractV2 acceptance currently supports one integrated reviewer. Review-lane
-aggregation is not a public record shape and must not be used to claim acceptance.
-A reviewer sees the request, accepted plan, baseline, exact scope,
-exclusions, focused checks, artifact identity, and named risk-bearing consumers—no
-unbounded conversation or live workspace.
-Reviewer model diversity follows [`model-selection.md`](model-selection.md) and
-supplements rather than replaces fresh-context and frozen-artifact independence.
+Pause all writers and edits. Start one fresh no-history reviewer for that artifact
+with the validated prompt; confirm its effective read-only sandbox and disabled approvals,
+and record the actual artifact read boundary. Read
+[`review-runtime.md`](review-runtime.md) only for reviewer setup, helper guarantees,
+or troubleshooting.
 
-In portable mode, the parent verifies the artifact and workspace identities before
-and after review, validates the reviewer result, and checks complete scope coverage.
-This is strong portable evidence, not a claim of runtime CAS or stop guarantees. In
-strict mode, the runtime must also attest the proofs and events defined in the strict
-references.
+ContractV2 accepts one integrated reviewer; partial lanes cannot combine into
+`CLEAN`. Validate identity, scope, artifact access, coverage, checks, and model
+provenance. Route findings, malformed output, and unavailable review to
+[`review-recovery.md`](review-recovery.md). `REVIEW_UNAVAILABLE` or
+`REVIEW_BLOCKED` yields `NOT_ACCEPTED`, never a commit.
 
-## 5. Findings and bounded rounds
+## 4. Accept
 
-For a validated `FINDINGS` result, follow [`review-recovery.md`](review-recovery.md),
-which owns the portable revision procedure. Every content-changing fix requires a
-new snapshot and review identity and complete integrated review coverage; no old
-coverage or `CLEAN` result transfers. Ordinary
-findings-driven rounds do not need new user authorization; the bounded round limit
-and user-decision gates are defined in that reference.
-The model request remains immutable across these rounds, although the runtime may
-resolve a different concrete model when the unchanged request permits it.
+After review, do only read-only acceptance work:
 
-`REVIEW_UNAVAILABLE` means no usable independent result arrived. `REVIEW_BLOCKED`
-means a result exists but its identity, scope, artifact, or required proof is not
-valid. In portable mode either condition produces `NOT_ACCEPTED` and a handoff, not
-a commit. Strict replacement is a separate, bounded recovery operation and is
-allowed only after the authoritative stop confirmation specified in
-[`review-recovery-strict.md`](review-recovery-strict.md).
+1. Inspect the full diff, status, staged boundary, and generated, secret, and debug
+   changes. Focused checks must cover every changed path.
+2. Create complete `acceptance-evidence-v2` with the result, proofs, checks, model
+   policy and resolution, full validation, and outcome.
+3. Run:
 
-## 6. Independent acceptance
+   ```bash
+   python3 "$CDW_SKILL_DIR/scripts/workflow_tool.py" accept \
+     --evidence /absolute/path/to/acceptance-evidence.json \
+     --root /absolute/path/to/repository --expected-run-id RUN_ID
+   ```
 
-After the reviewer returns, the main agent performs only read-only acceptance work:
+Exit `0` means consistent evidence, a reopened verified artifact, matching claimed
+base Git identities, and a workspace matching the declared review scope. Exit `1`
+means a scope mismatch; `2` means invalid input, binding, record, or artifact.
+`review_scope_match` excludes unrelated tracked files; still inspect all diff/status.
 
-1. inspects the complete task diff, status, staged boundary, and generated/secrets/
-   debug changes while keeping substantive scope review bounded;
-2. validates the reviewer result, structured proof records, required-check coverage,
-   requested/resolved model policy, and previously recorded full-validation result;
-3. runs `snapshot_tool.py compare` with both expected identities to recheck the
-   final workspace against the exact reviewed artifact; and
-4. validates the complete `acceptance-evidence-v2` bundle.
+The helper cannot observe reviewer invocation/sandbox or prove preflight timing;
+`RUN_BOUND_NOT_TIME_VERIFIED` states this. It always leaves
+`helper_confirmed_acceptance=false`. Confirm every `live_confirmation_required`
+item, including paused writers and unchanged scoped content and Git identity. Exit
+`0` alone is never acceptance.
 
-Do not run a mutating formatter, generator, or test after the snapshot is frozen.
-If any post-freeze operation changes scoped content or Git identity, invalidate the
-review, rerun validation, and freeze a replacement snapshot.
+Do not run a mutating formatter, generator, or test after freezing. Any changed
+scoped content or Git identity invalidates review and requires validation and a new
+snapshot.
 
-Produce `ACCEPTED_PORTABLE` only when the independent portable review is usable,
-scope/artifact/workspace identities match, required checks pass, and full validation
-passes, and every final acceptance criterion is `met`. Required focused checks must
-collectively cover all changed paths, not merely reuse a passing check ID. The
-bundled validator cannot produce `ACCEPTED_STRICT`; an external
-authoritative runtime adapter must validate the same evidence plus all strict
-runtime proofs. Otherwise produce `NOT_ACCEPTED` with the precise V2 reason.
+Report `ACCEPTED_PORTABLE` only with a usable independent review, enforced
+read-only sandbox, matching scope/artifact/workspace identities, passing required
+and full checks, all criteria `met`, and consistent evidence. This does not prove
+exclusive artifact access unless enforced and recorded. Only an outside adapter
+can produce `ACCEPTED_STRICT`. Otherwise report `NOT_ACCEPTED` with the exact V2
+reason.
 
-A failed validation, missing proof, user decision, quarantine, incomplete coverage,
-identity mismatch, or changed scope invalidates acceptance and requires a targeted
-fix plus a new review identity.
-
-## 7. Optional local commit
-
-A local commit is an explicit user-authorized operation, not a default workflow
-outcome. It is permitted only after acceptance and only when the baseline index was
-clean and no pre-existing edit overlaps an explicit task path.
-
-Record intent separately from lifecycle: `NOT_REQUESTED`, `PENDING`, `CREATED`, or
-`BLOCKED`. A non-accepted workflow may preserve explicit user intent as `BLOCKED`
-with a reason; it must not rewrite that intent to false.
-
-When those conditions hold:
-
-1. Reconcile the baseline and current Git path states. Treat a pre-existing staged,
-   unstaged, or untracked entry as overlapping when its path equals, is a descendant
-   of, or is an ancestor of an explicit task path; a task directory therefore
-   includes all of its descendants.
-2. If any such overlap exists, do not stage or commit. Report the exact paths and
-   hand off the accepted result or ask the user to separate and explicitly
-   authorize the overlap. Content identity proves bytes, not authorship.
-3. stage only the explicit task paths;
-4. inspect staged paths and the staged diff;
-5. verify staged content matches the accepted reviewed identity;
-6. create one focused local commit; and
-7. verify the commit summary and worktree.
-
-If any pre-existing staged change exists, or any pre-existing unstaged/untracked
-change overlaps a task path, decline the commit and hand off the
-accepted-but-uncommitted result. This portable policy is deliberately conservative:
-it avoids accidentally including unrelated work and avoids temporary-index surgery.
-Push, publication, deployment, installation, and other external mutations require
-separate explicit authorization.
+Report what changed, checks, review conclusion, acceptance status, and remaining
+risks. Mention a commit only if created. For a blocked handoff or requested commit,
+use [`failure-and-reporting.md`](failure-and-reporting.md). External changes require
+separate authorization.

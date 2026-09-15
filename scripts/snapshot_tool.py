@@ -11,6 +11,7 @@ import json
 import os
 import secrets
 import selectors
+import shutil
 import signal
 import stat
 import subprocess
@@ -56,6 +57,7 @@ ENTRY_TYPES = frozenset(ENTRY_CONTRACT["types"])
 ARTIFACT_PREFIXES = dict(ENTRY_CONTRACT["artifact_prefixes"])
 BASELINE_TYPES = frozenset(SNAPSHOT_MANIFEST["baseline_types"])
 TOP_LEVEL = frozenset(SNAPSHOT_MANIFEST["top_level"])
+GIT_EXECUTABLE = shutil.which("git", path=os.defpath) or "git"
 
 
 def _contract_limit(reference: str) -> int:
@@ -86,6 +88,7 @@ SNAPSHOT_DEPTH = _artifact_limit("snapshot_depth_ref")
 SYMLINK_TARGET_BYTES = _artifact_limit("symlink_target_bytes_ref")
 MANIFEST_BYTES = _artifact_limit("manifest_bytes_ref")
 MAX_ENTRIES = _artifact_limit("max_entries")
+MAX_SCOPE_PATHS = _artifact_limit("scope_paths_ref")
 MAX_FILE_BYTES = _artifact_limit("file_bytes_ref")
 MAX_TOTAL_BYTES = _artifact_limit("total_bytes_ref")
 MAX_GIT_OUTPUT_BYTES = _artifact_limit("git_output_bytes_ref")
@@ -121,6 +124,7 @@ def _descriptor_operations_supported() -> bool:
         and os.scandir in getattr(os, "supports_fd", set())
         and hasattr(os, "O_NOFOLLOW")
         and hasattr(os, "O_DIRECTORY")
+        and hasattr(os, "O_NONBLOCK")
         and hasattr(fcntl, "F_DUPFD_CLOEXEC")
     )
 
@@ -221,7 +225,7 @@ def _terminate_process_group(process: subprocess.Popen[bytes]) -> None:
 
 def _git_environment() -> dict[str, str]:
     return {
-        "PATH": os.environ.get("PATH", os.defpath),
+        "PATH": os.defpath,
         "LANG": "C",
         "LC_ALL": "C",
         "GIT_NO_LAZY_FETCH": "1",
@@ -239,7 +243,7 @@ def git_executable_probe() -> tuple[bool, str]:
     """Boundedly confirm that the Git executable can start and exit successfully."""
     try:
         process = subprocess.Popen(
-            ["git", "--version"],
+            [GIT_EXECUTABLE, "--version"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             env=_git_environment(),
@@ -259,7 +263,7 @@ def git_executable_probe() -> tuple[bool, str]:
 
 def _run_git(root_descriptor: int, *args: str, max_bytes: int | None = None) -> bytes:
     command = [
-        "git",
+        GIT_EXECUTABLE,
         "--no-optional-locks",
         "--literal-pathspecs",
         "-c",
@@ -390,7 +394,12 @@ def _git_identity(root_descriptor: int) -> dict[str, str]:
         branch = "DETACHED" if branch_ref == "HEAD" else branch_ref
     if not branch:
         raise SnapshotError("Git branch identity is empty")
-    index_raw = _run_git(root_descriptor, "ls-files", "--stage", "-z")
+    # The status tag records skip-worktree and uses lowercase for
+    # assume-unchanged. Keep it beside the stage data so either flag changes
+    # the frozen index identity even when object IDs and paths do not change.
+    index_raw = _run_git(
+        root_descriptor, "ls-files", "--stage", "-v", "-z", "--"
+    )
     staged_raw = _run_git(
         root_descriptor,
         "diff",
@@ -428,7 +437,7 @@ def _git_identity(root_descriptor: int) -> dict[str, str]:
 
 def git_identity(root: Path) -> dict[str, str]:
     """Return identity for a path while binding every query to one root inode."""
-    root = Path(os.path.abspath(root))
+    root = _canonical_absolute_path(root)
     descriptor = _open_root_fd(root)
     try:
         identity = _git_identity(descriptor)
@@ -444,10 +453,28 @@ def _reject_path_argument_traversal(path_arg: str, *, label: str) -> None:
         raise SnapshotError(f"{label} must not contain '.' or '..' path components")
 
 
+def _canonical_absolute_path(path_arg: str | Path) -> Path:
+    """Normalize an absolute path without resolving or following symlinks."""
+    absolute = Path(os.path.abspath(path_arg))
+    if os.name == "posix" and absolute.is_absolute():
+        # POSIX permits exactly two leading slashes to retain a distinct spelling,
+        # even though Linux resolves it to the same root. Use one canonical anchor
+        # before lexical ancestry checks.
+        return Path(os.path.sep).joinpath(*absolute.parts[1:])
+    return absolute
+
+
+def _path_is_at_or_below(root: str | Path, candidate: str | Path) -> bool:
+    """Return whether two canonical absolute spellings have an ancestry relation."""
+    canonical_root = _canonical_absolute_path(root)
+    canonical_candidate = _canonical_absolute_path(candidate)
+    return canonical_candidate == canonical_root or canonical_root in canonical_candidate.parents
+
+
 def _real_directory(path_arg: str, *, label: str) -> Path:
     """Return an absolute directory after lstat-checking every raw component."""
     _reject_path_argument_traversal(path_arg, label=label)
-    absolute = Path(os.path.abspath(path_arg))
+    absolute = _canonical_absolute_path(path_arg)
     current = Path(absolute.anchor)
     for component in absolute.parts[1:]:
         current = current / component
@@ -474,7 +501,7 @@ def _require_descriptor_traversal() -> None:
 
 def _directory_flags() -> int:
     _require_descriptor_traversal()
-    return os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    return os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK
 
 
 def _relative_parts(relative: str, *, max_depth: int | None = None) -> list[str]:
@@ -608,7 +635,7 @@ def _read_regular_file(
     *,
     max_bytes: int = MAX_FILE_BYTES,
 ) -> bytes:
-    flags = os.O_RDONLY | os.O_NOFOLLOW
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
     try:
         descriptor = os.open(name, flags, dir_fd=parent_descriptor)
     except OSError as exc:
@@ -870,14 +897,14 @@ def _validate_entry(
     if not isinstance(entry["mode"], int) or isinstance(entry["mode"], bool) or entry["mode"] < 0 or entry["mode"] > 0o7777:
         raise SnapshotError(f"{label}[{index}].mode is invalid")
     if entry["type"] == "file":
-        if not isinstance(entry["size"], int) or entry["size"] < 0 or entry["artifact_path"] != f"{artifact_prefix}/{path}":
+        if not isinstance(entry["size"], int) or isinstance(entry["size"], bool) or entry["size"] < 0 or entry["artifact_path"] != f"{artifact_prefix}/{path}":
             raise SnapshotError(f"{label}[{index}] file size/artifact_path is invalid")
         _relative_parts(entry["artifact_path"], max_depth=SNAPSHOT_DEPTH + 1)
         _ensure_hash(entry["content_hash"], f"{label}[{index}].content_hash")
         if entry["symlink_target"] is not None:
             raise SnapshotError(f"{label}[{index}] file cannot have a symlink target")
     elif entry["type"] == "symlink":
-        if not isinstance(entry["size"], int) or entry["size"] < 0 or entry["artifact_path"] is not None:
+        if not isinstance(entry["size"], int) or isinstance(entry["size"], bool) or entry["size"] < 0 or entry["artifact_path"] is not None:
             raise SnapshotError(f"{label}[{index}] symlink size/artifact_path is invalid")
         target = _validate_symlink_target(entry["symlink_target"], f"{label}[{index}]")
         if entry["size"] != len(target.encode("utf-8")):
@@ -891,7 +918,9 @@ def _validate_entry(
     return path
 
 
-def _validate_manifest(manifest: Any) -> dict[str, Any]:
+def _validate_manifest(
+    manifest: Any, *, manifest_size: int | None = None
+) -> dict[str, Any]:
     if not isinstance(manifest, dict):
         raise SnapshotError("manifest must be a JSON object")
     if set(manifest) != MANIFEST_FIELDS:
@@ -921,6 +950,8 @@ def _validate_manifest(manifest: Any) -> dict[str, Any]:
     _ensure_hash(base["worktree_status_digest"], "base_git_identity.worktree_status_digest")
     if not isinstance(manifest["scope_paths"], list):
         raise SnapshotError("scope_paths must be a list")
+    if len(manifest["scope_paths"]) > MAX_SCOPE_PATHS:
+        raise SnapshotError("scope_paths exceed the bounded snapshot scope")
     normalized_scope = [normalize_repo_path(item) for item in manifest["scope_paths"]]
     if normalized_scope != manifest["scope_paths"] or normalized_scope != sorted(set(normalized_scope)):
         raise SnapshotError("scope_paths must be normalized, unique, and sorted")
@@ -954,8 +985,20 @@ def _validate_manifest(manifest: Any) -> dict[str, Any]:
     ]
     if any(entry["size"] > MAX_FILE_BYTES for entry in file_entries):
         raise SnapshotError("artifact contains a file larger than the declared limit")
-    if sum(entry["size"] for entry in file_entries) > MAX_TOTAL_BYTES:
+    content_bytes = sum(entry["size"] for entry in file_entries)
+    if content_bytes > MAX_TOTAL_BYTES:
         raise SnapshotError("artifact content exceeds the declared total byte limit")
+    if manifest_size is None:
+        manifest_size = len(canonical_json(manifest)) + 1
+    if (
+        isinstance(manifest_size, bool)
+        or not isinstance(manifest_size, int)
+        or manifest_size < 0
+        or manifest_size > MANIFEST_BYTES
+    ):
+        raise SnapshotError("artifact manifest exceeds the bounded JSON size")
+    if content_bytes + manifest_size > MAX_TOTAL_BYTES:
+        raise SnapshotError("artifact exceeds the declared total byte limit")
     entry_paths = set(paths)
     for scope_path in manifest["scope_paths"]:
         if scope_path not in entry_paths:
@@ -974,6 +1017,7 @@ def _validate_manifest(manifest: Any) -> dict[str, Any]:
 
 def _open_absolute_parent(path: Path) -> tuple[int, str]:
     """Open an absolute path's parent without following any component."""
+    path = _canonical_absolute_path(path)
     if not path.is_absolute() or len(path.parts) < 2:
         raise SnapshotError("artifact output must name a non-root absolute path")
     descriptor = os.open(os.path.sep, _directory_flags())
@@ -995,6 +1039,7 @@ def _open_absolute_parent(path: Path) -> tuple[int, str]:
 
 
 def _open_absolute_directory(path: Path) -> int:
+    path = _canonical_absolute_path(path)
     parent_descriptor, name = _open_absolute_parent(path)
     try:
         try:
@@ -1006,6 +1051,7 @@ def _open_absolute_directory(path: Path) -> int:
 
 
 def _assert_directory_path_binding(path: Path, descriptor: int, label: str) -> None:
+    path = _canonical_absolute_path(path)
     parent_descriptor, name = _open_absolute_parent(path)
     try:
         current = os.stat(name, dir_fd=parent_descriptor, follow_symlinks=False)
@@ -1061,7 +1107,11 @@ def _read_artifact_file(artifact_descriptor: int, relative: str) -> bytes:
     parent_descriptor, name, opened = _open_relative_parent_from_fd(artifact_descriptor, relative)
     try:
         try:
-            descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent_descriptor)
+            descriptor = os.open(
+                name,
+                os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                dir_fd=parent_descriptor,
+            )
         except OSError as exc:
             raise SnapshotError(f"artifact file is not safely readable: {relative}") from exc
         try:
@@ -1276,14 +1326,14 @@ def _set_output_directory_modes(output_descriptor: int, directories: set[str]) -
 def create_snapshot(root_arg: str, scope_arg: str, output_arg: str) -> dict[str, Any]:
     root = _real_directory(root_arg, label="repository root")
     _reject_path_argument_traversal(output_arg, label="artifact output")
-    output = Path(os.path.abspath(output_arg))
+    output = _canonical_absolute_path(output_arg)
     root_descriptor = _open_root_fd(root)
     try:
         try:
-            output.relative_to(root)
-        except ValueError:
-            pass
-        else:
+            output_inside_root = _path_is_at_or_below(root, output)
+        except (OSError, ValueError):
+            output_inside_root = True
+        if output_inside_root:
             raise SnapshotError("artifact output must be outside the repository root")
         _, scope_paths, scope_digest = _scope_paths(scope_arg)
         if _load_renameat2() is None:
@@ -1417,9 +1467,15 @@ def create_snapshot(root_arg: str, scope_arg: str, output_arg: str) -> dict[str,
         os.close(root_descriptor)
 
 
-def _read_manifest_from_descriptor(artifact_descriptor: int, artifact: Path) -> dict[str, Any]:
+def _read_manifest_from_descriptor(
+    artifact_descriptor: int, artifact: Path
+) -> tuple[dict[str, Any], int]:
     try:
-        manifest_descriptor = os.open("manifest.json", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=artifact_descriptor)
+        manifest_descriptor = os.open(
+            "manifest.json",
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+            dir_fd=artifact_descriptor,
+        )
     except OSError as exc:
         raise SnapshotError("artifact manifest is missing or is not safely readable") from exc
     try:
@@ -1432,7 +1488,9 @@ def _read_manifest_from_descriptor(artifact_descriptor: int, artifact: Path) -> 
         manifest = load_json_bytes(manifest_bytes, source=str(artifact / "manifest.json"))
     except ContractError as exc:
         raise SnapshotError(str(exc)) from exc
-    return _validate_manifest(manifest)
+    return _validate_manifest(manifest, manifest_size=len(manifest_bytes)), len(
+        manifest_bytes
+    )
 
 
 def _expected_scope(scope_arg: str | None) -> tuple[list[str], str] | None:
@@ -1451,7 +1509,9 @@ def _verify_artifact_descriptor(
     expected_manifest_identity: str | None = None,
 ) -> dict[str, Any]:
     initial_stat = os.fstat(artifact_descriptor)
-    manifest = _read_manifest_from_descriptor(artifact_descriptor, artifact)
+    manifest, manifest_size = _read_manifest_from_descriptor(
+        artifact_descriptor, artifact
+    )
     if expected_scope is not None:
         expected_paths, expected_digest = expected_scope
         if manifest["scope_paths"] != expected_paths or manifest["scope_digest"] != expected_digest:
@@ -1499,14 +1559,14 @@ def _verify_artifact_descriptor(
         raise SnapshotError(f"artifact file set mismatch (missing={sorted(expected_files - actual_files)}, extra={sorted(actual_files - expected_files)})")
     if actual_directories != expected_directories:
         raise SnapshotError(f"artifact directory set mismatch (missing={sorted(expected_directories - actual_directories)}, extra={sorted(actual_directories - expected_directories)})")
-    total_bytes = 0
+    total_bytes = manifest_size
     for entry in all_entries:
         if entry["type"] != "file":
             continue
         data = _read_artifact_file(artifact_descriptor, entry["artifact_path"])
         total_bytes += len(data)
         if total_bytes > MAX_TOTAL_BYTES:
-            raise SnapshotError("artifact content exceeds the declared total byte limit")
+            raise SnapshotError("artifact exceeds the declared total byte limit")
         if len(data) != entry["size"] or _digest(data, "snapshot_entry") != entry["content_hash"]:
             raise SnapshotError(f"artifact content mismatch: {entry['path']}")
     final_top_level = set(_directory_listing(artifact_descriptor, "artifact root"))
@@ -1519,8 +1579,14 @@ def _verify_artifact_descriptor(
         data = _read_artifact_file(artifact_descriptor, entry["artifact_path"])
         if len(data) != entry["size"] or _digest(data, "snapshot_entry") != entry["content_hash"]:
             raise SnapshotError(f"artifact content changed during verification: {entry['path']}")
-    final_manifest = _read_manifest_from_descriptor(artifact_descriptor, artifact)
-    if final_manifest != manifest or not _same_inode(initial_stat, os.fstat(artifact_descriptor)):
+    final_manifest, final_manifest_size = _read_manifest_from_descriptor(
+        artifact_descriptor, artifact
+    )
+    if (
+        final_manifest != manifest
+        or final_manifest_size != manifest_size
+        or not _same_inode(initial_stat, os.fstat(artifact_descriptor))
+    ):
         raise SnapshotError("artifact changed during verification")
     return manifest
 
@@ -1532,7 +1598,7 @@ def verify_artifact(
     expected_manifest_identity: str | None = None,
 ) -> dict[str, Any]:
     _reject_path_argument_traversal(artifact_arg, label="artifact path")
-    artifact = Path(os.path.abspath(artifact_arg))
+    artifact = _canonical_absolute_path(artifact_arg)
     if expected_content_identity is not None:
         _ensure_hash(expected_content_identity, "expected_content_identity")
     if expected_manifest_identity is not None:
@@ -1553,6 +1619,7 @@ def verify_artifact(
     return {
         "artifact": str(artifact),
         "valid": True,
+        "base_git_identity": manifest["base_git_identity"],
         "content_identity": manifest["content_identity"],
         "manifest_identity": manifest["manifest_identity"],
     }
@@ -1566,7 +1633,7 @@ def compare_workspace(
     expected_manifest_identity: str | None = None,
 ) -> tuple[int, dict[str, Any]]:
     _reject_path_argument_traversal(artifact_arg, label="artifact path")
-    artifact = Path(os.path.abspath(artifact_arg))
+    artifact = _canonical_absolute_path(artifact_arg)
     if expected_content_identity is not None:
         _ensure_hash(expected_content_identity, "expected_content_identity")
     if expected_manifest_identity is not None:

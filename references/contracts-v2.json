@@ -4,7 +4,9 @@
   "canonicalization": {
     "encoding": "UTF-8",
     "json": "compact JSON with lexicographically sorted object keys, ensure_ascii=false, and no duplicate keys or non-finite numbers",
-    "paths": "repository-relative POSIX paths; dot components are removed, parent traversal and absolute paths are rejected",
+    "paths": "repository-relative POSIX paths; dot components are removed, parent traversal and absolute paths are rejected; file: escapes a path that would otherwise look semantic or location-shaped",
+    "explicit_path_reference_scheme": "file",
+    "semantic_reference_schemes": ["api", "command", "module", "package", "service", "symbol"],
     "hash_algorithm": "SHA-256",
     "domains": {
       "record": "cdw-contract-v2\u0000",
@@ -45,7 +47,10 @@
     "snapshot_total_bytes": 67108864,
     "git_output_bytes": 16777216,
     "git_timeout_seconds": 30,
-    "runtime_events": 64
+    "runtime_events": 64,
+    "execution_wall_clock_seconds": 86400,
+    "execution_turns": 128,
+    "execution_output_bytes": 4194304
   },
   "statuses": {
     "common_exceptional": [
@@ -142,6 +147,7 @@
     "model_fallback_policies": ["fail", "allow_runtime_default"],
     "model_selection_outcomes": ["honored", "fallback", "unknown"],
     "reviewer_model_independence": ["same_allowed", "different_preferred", "different_required"],
+    "artifact_only_read_enforcement": ["container_mount", "read_allowlist", "none", "unknown"],
     "not_accepted_reasons": [
       "REVIEW_UNAVAILABLE",
       "REVIEW_BLOCKED",
@@ -256,6 +262,7 @@
       "top_level": ["manifest.json", "files", "baseline"],
       "limits": {
         "max_entries": {"limit_ref": "limits.scope_entries", "multiplier": 64},
+        "scope_paths_ref": "limits.scope_entries",
         "snapshot_depth_ref": "limits.snapshot_depth",
         "symlink_target_bytes_ref": "limits.symlink_target_bytes",
         "manifest_bytes_ref": "limits.json_bytes",
@@ -437,9 +444,18 @@
       "required": ["version", "wall_clock_seconds", "max_turns", "max_output_bytes"],
       "fields": {
         "version": {"type": "const", "value": "execution-budget-v2"},
-        "wall_clock_seconds": {"type": "positive_integer"},
-        "max_turns": {"type": "positive_integer"},
-        "max_output_bytes": {"type": "positive_integer"}
+        "wall_clock_seconds": {
+          "type": "positive_integer",
+          "max_value_ref": "limits.execution_wall_clock_seconds"
+        },
+        "max_turns": {
+          "type": "positive_integer",
+          "max_value_ref": "limits.execution_turns"
+        },
+        "max_output_bytes": {
+          "type": "positive_integer",
+          "max_value_ref": "limits.execution_output_bytes"
+        }
       }
     },
     "artifact_access_proof": {
@@ -574,6 +590,7 @@
         "isolation",
         "budget",
         "resumable",
+        "model_request",
         "model_profile",
         "full_suite_owner",
         "snapshot_id",
@@ -646,14 +663,33 @@
       }
     },
     "capability_preflight": {
-      "required": ["version", "mode", "result", "capabilities", "missing", "authority"],
+      "required": [
+        "version",
+        "run_id",
+        "mode",
+        "result",
+        "capabilities",
+        "missing",
+        "authority",
+        "read_only_enforcement",
+        "artifact_only_read_enforcement"
+      ],
       "fields": {
         "version": {"type": "const", "value": "capability-preflight-v2"},
+        "run_id": {"type": "identifier"},
         "mode": {"type": "enum", "values": ["portable", "strict"]},
         "result": {"type": "enum", "values": ["PORTABLE_READY", "STRICT_READY", "NOT_READY"]},
         "capabilities": {"type": "capability_map"},
         "missing": {"type": "token_list", "max_items": 16, "set_like": true},
-        "authority": {"type": "enum", "values": ["observed_tool_surface", "authoritative_runtime_record"]}
+        "authority": {"type": "enum", "values": ["observed_tool_surface", "authoritative_runtime_record"]},
+        "read_only_enforcement": {
+          "type": "enum",
+          "values": ["parent_sandbox", "custom_agent_sandbox", "unverified"]
+        },
+        "artifact_only_read_enforcement": {
+          "type": "enum_ref",
+          "ref": "statuses.artifact_only_read_enforcement"
+        }
       }
     },
     "role_result": {
@@ -668,7 +704,8 @@
         "risks",
         "blocker_or_input",
         "attention_required",
-        "next_action"
+        "next_action",
+        "model_profile"
       ],
       "fields": {
         "version": {"type": "const", "value": "role-result-v2"},

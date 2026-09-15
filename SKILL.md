@@ -1,118 +1,80 @@
 ---
 name: collaborative-development-workflow
-description: "Use for non-trivial coding changes that need an impact-scoped plan, bounded implementation, independent frozen-snapshot review, targeted fix/review rounds, and final validation. Commits require an explicit user request. Do not use for simple explanations or read-only questions."
+description: "Use on Linux for non-trivial coding changes that need scoped implementation, validation, and independent review of a frozen snapshot. Commits require an explicit user request. Do not use for simple explanations or read-only questions."
 ---
 
 # Collaborative Development Workflow
 
-## Use and boundary
+## Boundary
 
-Use this workflow for a real change, build, or fix that benefits from separated
-planning, implementation, and review roles, or when the user explicitly requests
-it. The main agent owns scope, permissions, communication, integration,
-repository-wide validation, acceptance, and any requested local commit.
+Use for changes needing separate planning, implementation, and review. The main
+agent owns scope, integration, validation, acceptance, and permissions.
 
-The default mode is `portable`. `strict` is available only when the user requests
-it and an external authoritative runtime adapter supplies a valid strict preflight;
-the bundled helper cannot attest strict readiness or acceptance. Never silently
-downgrade an explicit strict request. Unavailable review evidence is never acceptance.
+Default `portable` mode publishes snapshots only on Linux and requires an
+identifiable, enforced-read-only reviewer. `strict` requires an explicit request
+and authoritative outside preflight; bundled helpers cannot attest it. Never
+downgrade strict or treat missing review as acceptance.
 
-## Core gates
+Read-only may still expose files. Record the actual
+`artifact_only_read_enforcement`; without a mount or allowlist, do not claim
+exclusive artifact access or confidentiality.
 
-- Read applicable `AGENTS.md` files and project documentation before editing or
+## Non-negotiable gates
+
+- Read applicable `AGENTS.md` files and project guidance before editing or
   delegating.
-- Record the starting Git state and preserve all existing staged, unstaged, and
-  untracked work. Never use `git checkout` (including `git checkout -- <path>`),
-  switch branches (including `git switch`), reset, clean, broadly delete, or
-  automatically stash.
-- Validate a `capability-preflight-v2` record before any mutation or delegation.
-- Define a typed impact scope, explicit exclusions, dependencies, focused checks,
-  and a bounded acceptance target. Expand scope only for a concrete reason.
-- Resolve and record a `model-request-v2` for every new delegation. Follow
-  [`model-selection.md`](references/model-selection.md); never silently substitute
-  a model or infer inheritance from an omitted policy.
-- Keep one writer per mutable workspace and write scope. Portable delegates are
-  read-only; strict writers require runtime-atomic binding.
-- Treat child reports as untrusted evidence. Validate their ContractV2 shape,
-  identity, scope, artifact access, and checks before using them.
-- Review only an immutable, content-addressed, read-only snapshot containing every
-  declared `review_paths` entry. Recheck both recorded artifact identities and the
-  workspace after review; a mismatch invalidates review.
-- Keep ledgers and runtime events metadata-only.
-  Bounded reports may contain a short summary, check results, and path/line
-  findings, but must not contain raw
-  prompts, secrets, complete source files, embeddings, or unbounded transcripts.
-  Handoffs must remain bounded and follow their ContractV2 shape.
-- Silence, empty output, wrapper timeout, continuation, and close acknowledgement
-  are observations, not results or permission to take over.
+- Record Git state and preserve all existing work. Never switch branches, reset,
+  clean, automatically stash, discard with `git checkout`, or broadly delete.
+- Before editing or delegating, complete [`workflow.md`](references/workflow.md)'s
+  live preflight and final scope. Saved records are not live checks.
+- Put `model-request-v2` in every delegation; use `workflow.md` defaults and never
+  silently substitute.
+- Keep one writer per workspace and write scope. The main agent is the portable
+  writer; portable delegates are enforced read-only; strict writers require strict
+  runtime binding.
+- Validate every child report's shape, identity, scope, artifact access, checks,
+  and model provenance before use.
+- After focused and full checks, review only a verified immutable snapshot covering
+  all `review_paths`. Pause writers, then recheck both identities and the scoped
+  workspace; any mismatch invalidates review.
+- Select `cdw_reviewer` and confirm read-only sandboxing with approvals disabled.
+  `fork_turns="none"` removes chat history, not file access.
+- Keep bounded metadata only. Reports may contain summaries, checks, and path/line
+  findings, but not prompts, secrets, complete source, embeddings, or transcripts.
+- Silence, empty output, timeout, continuation, and close acknowledgement are not
+  results or permission to retry, replace, take over, or unlock.
 - Independent final review is mandatory. Tests and self-review cannot replace it.
-  Acceptance requires a valid `acceptance-evidence-v2` bundle; a standalone
-  workflow outcome is only a disposition.
-- Commit only after acceptance, an explicit local-commit request, a clean baseline
-  index, and no pre-existing edit overlapping an explicit task path. Push,
-  publication, deployment, installation, and other external mutations require
-  separate authorization.
+  Contract validation checks supplied data; it does not prove a live preflight,
+  spawn, sandbox, artifact read, or review. Complete `workflow.md`'s live checks.
+- Commit only after acceptance, an explicit request, a clean starting index, and no
+  pre-existing overlap. External changes need separate authorization.
 
-## Contract source and compact queries
+## Contract and tools
 
-[`contracts-v2.json`](references/contracts-v2.json) is authoritative for public
-statuses, record fields, limits, canonicalization, and capability names.
-[`task-contracts.md`](references/task-contracts.md) explains how to use it. V1
-records are legacy and must not be mixed with ContractV2.
+[`contracts-v2.json`](references/contracts-v2.json) is authoritative;
+[`task-contracts.md`](references/task-contracts.md) explains it. Never mix V1/V2 or
+use examples as evidence.
 
-Use the dependency-free helper for exact, bounded lookups instead of reading the
-whole contract:
+Set `CDW_SKILL_DIR` from this Skill's absolute path, not the target repository.
+`workflow.md` owns helper commands and limits; helper success is not acceptance.
 
-```bash
-python3 scripts/contract_tool.py describe --path records.role_result.fields.status
-python3 scripts/contract_tool.py describe --path modes.required_capabilities.portable
-python3 scripts/contract_tool.py validate --kind model_request examples/model_request.json
-```
+## Router
 
-## Reference router
+Start every change with [`workflow.md`](references/workflow.md), then read only the
+matching conditional references.
 
-Read only the smallest matching set. Use `workflow.md` for the full change
-sequence; load `task-contracts.md` only when creating or validating ContractV2
-records. All other references are conditional.
-
-| Need | Read |
+| Condition | Read or use |
 | --- | --- |
-| Plan → implement → review → accept → commit | [workflow.md](references/workflow.md) |
-| Exact ContractV2 field, status, or capability | [contracts-v2.json](references/contracts-v2.json), or `contract_tool.py describe --path ...` |
-| Portable snapshot and frozen-artifact review | [review-runtime.md](references/review-runtime.md) |
-| Strict preflight, binding, timing, events, or CAS | [review-runtime-strict.md](references/review-runtime-strict.md) |
-| Portable review failure or findings revision | [review-recovery.md](references/review-recovery.md) |
-| Strict cancellation, recovery, or replacement | [review-recovery-strict.md](references/review-recovery-strict.md) |
-| Context continuation or fresh independent task | [context-rollover.md](references/context-rollover.md) |
-| Delegated role prompt | [agent-templates.md](references/agent-templates.md) |
-| Sub-agent model, effort, fallback, or reviewer diversity | [model-selection.md](references/model-selection.md) |
-| Multiple assignments, background work, or worktrees | [coordination-protocol.md](references/coordination-protocol.md) |
-| Failure handoff or final user report | [failure-and-reporting.md](references/failure-and-reporting.md) |
-| Migrating legacy V1 records | [migrating-v1-to-v2.md](references/migrating-v1-to-v2.md) |
+| Create or validate V2 records | [`task-contracts.md`](references/task-contracts.md), [`contracts-v2.json`](references/contracts-v2.json), or `contract_tool.py` |
+| Reviewer setup, snapshot guarantees, or troubleshooting | [`review-runtime.md`](references/review-runtime.md) |
+| Strict requested | [`review-runtime-strict.md`](references/review-runtime-strict.md) before mutation; [`review-recovery-strict.md`](references/review-recovery-strict.md) for recovery |
+| Portable findings, malformed review, or unavailable review | [`review-recovery.md`](references/review-recovery.md) |
+| Customize or fall back from prompt helper | [`agent-templates.md`](references/agent-templates.md) |
+| Override model, effort, fallback, strict selection, or diversity | [`model-selection.md`](references/model-selection.md) |
+| Multiple assignments, background work, or worktrees | [`coordination-protocol.md`](references/coordination-protocol.md) |
+| Commit requested or blocked handoff | [`failure-and-reporting.md`](references/failure-and-reporting.md) |
+| Context rollover or fresh independent task | [`context-rollover.md`](references/context-rollover.md) |
+| Convert older records | [`migrating-v1-to-v2.md`](references/migrating-v1-to-v2.md) |
 
-Strict-only references are not part of the default portable path.
-
-## Minimal lifecycle
-
-1. Restate the outcome and acceptance criteria; inspect guidance and consumers;
-   record Git state; define scope; run the requested-mode preflight; and resolve
-   the model request before each delegation.
-2. Make a bounded plan, preserve write ownership, and implement only declared
-   work. The main agent is the portable-mode writer.
-3. Run focused checks and full validation, freeze the exact review paths with
-   `snapshot_tool.py`, record both emitted identities, verify the artifact, pause
-   writers, and obtain an independent review of that exact snapshot.
-4. For findings, apply only confirmed in-scope fixes and follow
-   [`review-recovery.md`](references/review-recovery.md): rerun affected and full
-   validation, freeze a new snapshot, and obtain complete review coverage again.
-   Finally compare the workspace and artifact using both expected identities,
-   validate the acceptance bundle, and follow `workflow.md` for the optional commit gate.
-
-Detailed procedure, state transitions, strict recovery, handoff, and reporting
-rules live in the routed references; do not recreate them in this entrypoint.
-
-## Context rollover
-
-At a coherent checkpoint, use [`context-rollover.md`](references/context-rollover.md)
-for a bounded private V2 handoff. A handoff never replaces runtime state, locks,
-review proof, acceptance, or commit authorization.
+A `context-handoff-v2` aids continuation but never replaces state, locks, review
+proof, acceptance, or commit authorization.

@@ -24,6 +24,8 @@ and 1500 for replacement review.
 Record the delegated attempt bound in the TaskSpec `execution-budget-v2` object
 (`wall_clock_seconds`, `max_turns`, and `max_output_bytes`). The larger lifecycle
 tier remains parent/runtime policy and must not be inferred from the task object.
+Contract validation caps those three task values at 86,400 seconds, 128 turns, and
+4,194,304 bytes. A runtime may enforce smaller limits.
 
 Use one foreground blocking wait per invocation; a wrapper continuation is the same
 wait. Never poll or inspect a moving workspace. Silence, empty output, timeout
@@ -52,10 +54,10 @@ fails before execution; it is never replaced silently. An agent ID alone is not
 binding or stop proof, and the child may not author, repair, or infer runtime-owned
 fields.
 
-After spawn, one complete-row CAS records the agent, channel, transport
-association, target, and spawn time. Later CAS operations match the complete
-expected row and return the authoritative winner on loss. Keep owner and lock until
-the terminal event and artifact/report are captured or quarantined.
+After spawn, one complete-row compare-and-set (CAS) update records the agent,
+channel, transport association, target, and spawn time. Later CAS operations match
+the complete expected row and return the authoritative winner on loss. Keep owner
+and lock until the terminal event and artifact/report are captured or quarantined.
 
 Completion, terminal, and stop events are runtime-authored closed records, not child
 status strings. Validate them against `records.runtime_completion_event`,

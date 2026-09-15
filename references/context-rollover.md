@@ -1,141 +1,101 @@
 # Context Rollover and Fresh-Task Handoff (V2)
 
-Use this reference when the current context approaches its safe budget, when work
-must continue in a fresh invocation, or when a genuinely independent task should
-start without inheriting unrelated history.
-
-This is a bounded handoff protocol. The skill cannot force the current top-level
-runtime to compact its context or create a new session. If the runtime exposes those
-operations, request them after a coherent checkpoint. Otherwise write the private
-handoff below and have the next session read and validate it explicitly. Do not
-simulate a runtime lock or ledger with a Markdown repository file.
+Use this protocol when the current context is nearly full, work must continue in a
+fresh invocation, or an independent task should start without unrelated history.
+The Skill cannot force context compaction or create a session. If the runtime
+cannot do that, write the private handoff below and have the next session validate
+it. Do not imitate a runtime lock or ledger with a repository Markdown file.
 
 ## Choose the operation
 
-These operations have different identities and authority:
+| Operation | Carries forward | Identity and authority |
+| --- | --- | --- |
+| Independent task | New request and bounded manifest only | New task identity; parent scope and permissions |
+| Continuation | Validated checkpoint, identities, risks, next action | Same task and scope; runtime validates and preserves state |
+| Strict reviewer replacement | No handoff; use strict recovery | Same snapshot and budget; start only after an authoritative stop |
+| Fresh review round | No handoff; use review recovery | New snapshot, content, and invocation identities; existing task authority and its user-decision gates |
 
-| Operation | What carries forward | Identity rule | Authorization |
-| --- | --- | --- | --- |
-| Independent task | only the new request and bounded new manifest | new TaskSpec/task identity; no old checkpoint or active work | parent scope and permissions |
-| Continuation | validated checkpoint, artifact/content identity, risks, next action | same task and scope; preserve runtime state | parent/runtime validation |
-| Strict reviewer replacement | no handoff mode; use strict recovery | same snapshot and fixed budget; new invocation only after authoritative stop | strict runtime recovery |
-| Fresh review round | no handoff mode; use review recovery | new snapshot/content identities and reviewer invocation | existing task authority; user decision only at the bounded-round or scope gate |
+If independent work starts while the current task remains unfinished, capture a
+continuation handoff for the old task separately. Do not copy that handoff or the
+old conversation into the new task.
 
-If the user asks to start a relatively fresh and independent task while the current
-context is nearly full, do not copy the old conversation or continuation handoff
-into that task. Capture a continuation handoff only if the current task still needs
-to be resumed; then start the independent task with a new TaskSpec and bounded
-context.
+## Stop at a safe boundary
 
-## Safe boundary
-
-Start before exhaustion, leaving enough room to validate the manifest and tell the
-next invocation where it is. Use a natural boundary: a completed plan, passed
-focused check, implementer checkpoint, integrated result, or confirmed runtime
-terminal event. Do not describe an unfinished thought or an unverified child claim
-as a checkpoint.
+Leave enough context to validate and locate the handoff. Stop after a completed
+plan, passed focused check, implementer checkpoint, integrated result, or confirmed
+runtime terminal event. Never present an unfinished thought or unverified child
+claim as a checkpoint.
 
 Before a continuation capture:
 
-1. stop at a coherent parent-owned checkpoint; do not interrupt a live foreground
-   wait merely because the parent context is large;
-2. record task/run/attempt/invocation, owner, lock, and active-work metadata from the
-   authoritative runtime when available;
-3. verify branch/HEAD, baseline boundary, changed paths, focused-check outcomes, and
-   snapshot/content identities; and
-4. preserve any live child/reviewer in the runtime rather than copying a guessed
-   status into the handoff.
+1. Reach a parent-owned checkpoint without interrupting a live foreground wait.
+2. Record task, run, attempt, invocation, owner, lock, and active-work facts from
+   the authoritative runtime when available.
+3. Verify branch and HEAD, baseline boundary, changed paths, focused checks, and
+   snapshot and content identities.
+4. Leave live children and reviewers in the runtime; do not guess their state in
+   the handoff.
 
-## Closed handoff shape
+## Create the record
 
-The machine-readable record is `context-handoff-v2` in
-[`contracts-v2.json`](contracts-v2.json). Its bounded shape is:
-
-```text
-ContextHandoffV2 = {
-  version: "context-handoff-v2",
-  handoff_id: bounded token,
-  task_id: identifier,
-  run_id: identifier,
-  parent_task_id: identifier | null,
-  source_task_id: identifier | null,
-  source_run_id: identifier | null,
-  mode: continuation | independent,
-  original_request: bounded text,
-  accepted_plan: bounded plan steps,
-  baseline: { branch, head, status_digest },
-  scope: ImpactScopeV2,
-  acceptance_criteria: 1..32 bounded criteria,
-  focused_checks: FocusedCheckV2[],
-  checkpoint: bounded checkpoint | null,
-  artifacts: bounded artifact metadata[],
-  active_work: bounded runtime metadata[],
-  open_risks: bounded risk summaries[],
-  decisions: bounded decision summaries[]
-}
-```
-
-`mode=independent` requires `checkpoint=null`, `artifacts=[]`, `active_work=[]`,
-and null source identities. It is a record for the new task's bounded setup, not a
-copy of the old task. `mode=continuation` requires exactly one validated checkpoint
-and `source_task_id=task_id`, `source_run_id=run_id`. If that checkpoint has a real
-`content_identity`, `artifacts` must contain an artifact entry with the same
-`content_identity`; a checkpoint without content may have no artifact. A checkpoint
-and its artifact never prove acceptance or commit authorization.
-
-The request, plan, summaries, risks, and decisions are bounded metadata. Omit or
-redact raw conversation, source files, prompts, credentials, secrets, embeddings,
-model output, and unrelated history. Do not silently truncate: shorten into an
-accepted summary or report that the handoff cannot be represented safely.
-
-## Capture to a temporary file
-
-Use a task-specific temporary directory outside the repository. The following is a
-portable shell pattern; the skill does not require a particular temp root. After
-handoff, keep the record immutable; if it changes, discard the expected digest and
-block or recapture the handoff.
-
-First create the bounded JSON through the host's approved file-writing mechanism;
-only then set owner-only permissions and validate it. The repository example can be
-validated independently with an executable command:
+Inspect the authoritative shape rather than copying its fields:
 
 ```bash
-python3 scripts/contract_tool.py validate --kind context_handoff \
-  examples/context_handoff.json
+python3 "$CDW_SKILL_DIR/scripts/contract_tool.py" describe \
+  --kind context_handoff
+python3 "$CDW_SKILL_DIR/scripts/contract_tool.py" validate \
+  --kind context_handoff \
+  "$CDW_SKILL_DIR/examples/context_handoff.json"
 ```
 
-Compute and record the helper's digest outside the handoff if the next session
-cannot trust the file path alone. Keep the file private where the platform permits
-and do not create an untracked repository file merely to imitate a task store.
+Independent mode requires no checkpoint, artifacts, active work, or source
+identities. It describes the new bounded task; it is not a summary of the old
+one. Continuation mode requires exactly one validated checkpoint and matching
+task and run source identities. If that checkpoint has a real `content_identity`,
+include one artifact entry with the same identity. Neither a checkpoint nor its
+artifact proves acceptance or grants commit authority.
 
-## Resume in a fresh invocation
+Keep only bounded request, plan, summary, risk, decision, and artifact metadata.
+Do not include raw conversation, source files, prompts, credentials, secrets,
+embeddings, model output, or unrelated history. If the record does not fit its
+limits, write a shorter accepted summary or report that it cannot be represented;
+never silently truncate it.
 
-1. Pass the handoff path and external expected digest together with the original
-   bounded request and TaskSpec/context manifest.
-2. Before consuming the handoff, compute its ContractV2 digest with
-   `contract_tool.py digest --kind context_handoff` and compare it byte-for-byte
-   with the external expected digest (using the command's `digest` field). A
-   mismatch or unavailable digest blocks the handoff; do not read the record as
-   instructions.
-3. After the digest matches, validate the closed record before reading it as
-   instructions. A valid replacement record with a different digest is still
-   untrusted.
-4. Verify Git baseline, actual changed paths, checkpoint/content identity, and
-   authoritative runtime state. A mismatch requires re-planning or a blocked
-   handoff.
-5. For continuation, preserve the same task identity and run the exact next action;
-   for independent work, create a new identity and do not inherit the old checkpoint.
-6. Rerun the focused checks required by the resumed/new scope. Handoff alone never
-   proves `CHECKPOINT_READY`, `VERIFIED`, `CLEAN`, acceptance, or authorization to
-   commit, push, deploy, or publish.
-7. Retain the handoff until dependent work has consumed and validated it. Remove it
-   only with explicit task-specific cleanup after the relevant runtime state and
-   identities are captured.
+Create the JSON through an approved file-writing method in a task-specific
+temporary directory outside the repository. Set owner-only permissions, validate
+it, and keep it unchanged. If it changes, discard the expected digest and block
+or recapture it. Keep the digest outside the handoff when the next session cannot
+trust the path alone.
 
-## Capability gap
+## Resume
 
-If the runtime cannot create a fresh invocation, persist task state, bind identity,
-or provide a reliable stop target, report that capability gap. A temporary handoff
-can help a user start the next session manually, but it does not make the missing
-runtime guarantee true. Keep the affected strict review or acceptance path blocked
-until the required proof exists.
+1. Pass the handoff path, its external expected digest, the original bounded
+   request, and the TaskSpec or context manifest.
+2. Before treating the record as instructions, compute its digest and compare the
+   returned `digest` byte-for-byte with the external value:
+
+   ```bash
+   python3 "$CDW_SKILL_DIR/scripts/contract_tool.py" digest \
+     --kind context_handoff /absolute/path/to/handoff.json
+   ```
+
+   A missing or mismatched digest blocks the handoff. A valid replacement with a
+   different digest is still untrusted.
+3. After the digest matches, validate the closed record.
+4. Verify the Git baseline, actual changed paths, checkpoint and content identity,
+   and authoritative runtime state. Re-plan or block on any mismatch.
+5. Continue with the same task identity and exact next action, or create a new
+   identity for independent work without inheriting the old checkpoint.
+6. Rerun the focused checks required by the scope. A handoff never proves
+   `CHECKPOINT_READY`, `VERIFIED`, `CLEAN`, acceptance, or permission to commit,
+   push, deploy, or publish.
+7. Keep the handoff until dependent work has validated and consumed it. Remove it
+   only through explicit task-specific cleanup after preserving needed runtime
+   state and identities.
+
+## Missing runtime support
+
+If the runtime cannot create a fresh invocation, persist state, bind identity, or
+provide a reliable stop target, report that gap. A temporary handoff can help the
+user resume manually, but it cannot supply the missing guarantee. Keep the
+affected strict review or acceptance path blocked.

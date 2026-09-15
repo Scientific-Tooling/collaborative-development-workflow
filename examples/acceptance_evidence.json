@@ -2,6 +2,7 @@
   "version": "acceptance-evidence-v2",
   "capability_preflight": {
     "version": "capability-preflight-v2",
+    "run_id": "run-1",
     "mode": "portable",
     "result": "PORTABLE_READY",
     "capabilities": {
@@ -10,7 +11,9 @@
       "terminal_result_delivery": true
     },
     "missing": [],
-    "authority": "observed_tool_surface"
+    "authority": "observed_tool_surface",
+    "read_only_enforcement": "custom_agent_sandbox",
+    "artifact_only_read_enforcement": "none"
   },
   "review_rounds": [
     {
@@ -31,12 +34,12 @@
         "acceptance_criteria": [
           {"criterion_id": "criterion-1", "status": "met", "summary": "review"}
         ],
-        "read_scope": ["README.md", "src/main.py", "tests/test_main.py"],
+        "read_scope": ["README.md", "pyproject.toml", "src/main.py", "tests/test_main.py"],
         "write_scope": [],
         "impact_scope": {
           "version": "impact-scope-v2",
           "changed_paths": ["src/./main.py", "README.md"],
-          "review_paths": ["src/./main.py", "README.md", "tests/test_main.py"],
+          "review_paths": ["src/./main.py", "README.md", "pyproject.toml", "tests/test_main.py"],
           "direct_callers": ["module:entry"],
           "direct_consumers": ["tests/test_main.py"],
           "mapped_tests_or_configuration": ["pyproject.toml"],
@@ -104,7 +107,7 @@
         "content_identity": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "artifact_access_proof": "proof-1",
         "review_coverage_proof": "coverage-1",
-        "reviewed_paths": ["README.md", "src/main.py", "tests/test_main.py"],
+        "reviewed_paths": ["README.md", "pyproject.toml", "src/main.py", "tests/test_main.py"],
         "findings": [],
         "model_profile": {
           "model": "unknown",
@@ -121,9 +124,9 @@
         "snapshot_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "manifest_identity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "content_identity": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        "impact_scope_digest": "4ce5162032edabc332e71c84a22d4aafb684b01649d78d92dd67c110b7cf5edc",
-        "scope_paths": ["README.md", "src/main.py", "tests/test_main.py"],
-        "reviewer_result_digest": "9864060b2a571a01dae5f411c898b053b00874144097f37b02e599967b96c4b0",
+        "impact_scope_digest": "37f2eda6ea211928cf6b3c11d114d359142fda3eaafc5da37c115db5c0d043a3",
+        "scope_paths": ["README.md", "pyproject.toml", "src/main.py", "tests/test_main.py"],
+        "reviewer_result_digest": "74561721000c8c721aa04bed1d06ead4a6fbc9e0cb5803b9bb5c05547bbb6db2",
         "artifact_verification_status": "PASSED",
         "workspace_compare_status": "PASSED"
       },
@@ -133,10 +136,10 @@
         "round": 1,
         "snapshot_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "content_identity": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        "impact_scope_digest": "4ce5162032edabc332e71c84a22d4aafb684b01649d78d92dd67c110b7cf5edc",
-        "artifact_access_proof_digest": "75e60ee0e0de885dad3cb1bfeeb04ff75ff51c6b79f707cd70a7ef6a6b8b01ee",
-        "reviewer_result_digest": "9864060b2a571a01dae5f411c898b053b00874144097f37b02e599967b96c4b0",
-        "review_paths": ["README.md", "src/main.py", "tests/test_main.py"],
+        "impact_scope_digest": "37f2eda6ea211928cf6b3c11d114d359142fda3eaafc5da37c115db5c0d043a3",
+        "artifact_access_proof_digest": "e73e9e968a95ddef4247ab0266b9c3a56331fc2c0bca7c4c6b430f6472fd5fca",
+        "reviewer_result_digest": "74561721000c8c721aa04bed1d06ead4a6fbc9e0cb5803b9bb5c05547bbb6db2",
+        "review_paths": ["README.md", "pyproject.toml", "src/main.py", "tests/test_main.py"],
         "completed_scope": ["src/main.py"],
         "required_check_ids": ["focused"],
         "passed_check_ids": ["focused"],
@@ -154,8 +157,8 @@
     "review_status": "CLEAN",
     "reason": null,
     "validation_status": "PASSED",
-    "capability_preflight_digest": "cffd5cf2dc3876692c4bbb4a8d01ae75db6ab156877eb4381dd8bf920a4f6273",
-    "final_review_round_digest": "0b95eed2b1c9355f160c45bae757e7549e101f01fe7a7cefe0d81110acf1dfab",
+    "capability_preflight_digest": "fd8d19b252f44ed09aaae650ad99d0c219dc9e8144b1b0d985553f15f4c98897",
+    "final_review_round_digest": "77777f46ba097e556099aea67257d1028a6c33ec260a138d5d9ae9ce8447402b",
     "validation_checks": [
       {"id": "full", "status": "PASSED", "summary": "suite passed"}
     ],

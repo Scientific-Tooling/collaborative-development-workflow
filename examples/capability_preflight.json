@@ -1,12 +1,19 @@
 {
   "version": "capability-preflight-v2",
+  "run_id": "example-unattested-run",
   "mode": "portable",
-  "result": "PORTABLE_READY",
+  "result": "NOT_READY",
   "capabilities": {
-    "read_only_subagent_identity": true,
-    "terminal_result_delivery": true,
-    "shared_snapshot_access": true
+    "read_only_subagent_identity": false,
+    "terminal_result_delivery": false,
+    "shared_snapshot_access": false
   },
-  "missing": [],
-  "authority": "observed_tool_surface"
+  "missing": [
+    "read_only_subagent_identity",
+    "shared_snapshot_access",
+    "terminal_result_delivery"
+  ],
+  "authority": "observed_tool_surface",
+  "read_only_enforcement": "unverified",
+  "artifact_only_read_enforcement": "unknown"
 }

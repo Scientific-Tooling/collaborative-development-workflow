@@ -11,7 +11,8 @@ only in [`contracts-v2.json`](contracts-v2.json).
 
 The following is strict-only and requires the authoritative capabilities in
 `review-runtime-strict.md`. Parent-side `WAITING` is not a child state and does not
-mutate the runtime row.
+mutate the runtime row. Here, CAS means a compare-and-set update: the runtime
+changes a row only if its complete current value still matches the expected value.
 
 ```text
 PENDING → READY → CLAIMED → RUNNING → COMPLETED → VERIFIED
@@ -105,8 +106,12 @@ partitioned or multiplied through review lanes.
 A fresh review round is neither a findings fix nor a replacement. It requires
 explicit user authorization, confirmed stop or quarantine of every old invocation,
 a new run and reviewer invocation, a new snapshot identity, a separate budget, and
-an independent provider/model/channel with `fork_context=false`. Old silence,
-findings, partial output, coverage, and `CLEAN` claims do not carry forward.
+an independent provider, model, or channel. Give the reviewer only the bounded
+review task and artifact material, not the parent's conversation. In the current
+collaboration adapter, `fork_turns="none"` maps to this no-history request; it does
+not restrict filesystem reads. Record any enforced artifact-only read boundary in
+the new preflight. Old silence, findings, partial output, coverage, and `CLEAN`
+claims do not carry forward.
 
 Acceptance remains parent-owned by [`workflow.md`](workflow.md); strict recovery
 never grants acceptance or commit authorization by itself.

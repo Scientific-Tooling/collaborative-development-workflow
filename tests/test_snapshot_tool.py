@@ -12,23 +12,91 @@ from pathlib import Path
 from unittest import mock
 
 
-sys.path.insert(0, "scripts")
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(ROOT / "scripts"))
 
 import snapshot_tool
+from deadline_guard import fail_if_call_blocks
+from git_fixture import GitRepositoryTemplate, fixture_git_environment
+
+
+def _run_fixture_git(
+    root: Path, *args: str, environment: dict[str, str] | None = None
+) -> None:
+    subprocess.run(
+        ["git", "-C", str(root), *args],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=fixture_git_environment(environment),
+    )
+
+
+def _build_snapshot_repository(root: Path) -> None:
+    root.mkdir()
+    os.chmod(root, 0o755)
+    _run_fixture_git(root, "-c", "init.defaultBranch=main", "init", "-q")
+    _run_fixture_git(root, "config", "user.email", "test@example.invalid")
+    _run_fixture_git(root, "config", "user.name", "Snapshot Test")
+    (root / "tracked.txt").write_text("base\n", encoding="utf-8")
+    (root / "unicode.txt").write_text("雪\n", encoding="utf-8")
+    (root / "binary.bin").write_bytes(b"\x00\xff\x01")
+    (root / "old.txt").write_text("will be deleted\n", encoding="utf-8")
+    (root / "renamed-from.txt").write_text("rename source\n", encoding="utf-8")
+    for name in (
+        "tracked.txt",
+        "unicode.txt",
+        "binary.bin",
+        "old.txt",
+        "renamed-from.txt",
+    ):
+        os.chmod(root / name, 0o644)
+    _run_fixture_git(
+        root,
+        "add",
+        "tracked.txt",
+        "unicode.txt",
+        "binary.bin",
+        "old.txt",
+        "renamed-from.txt",
+    )
+    _run_fixture_git(
+        root,
+        "commit",
+        "-qm",
+        "base",
+        environment={
+            "GIT_AUTHOR_DATE": "@1 +0000",
+            "GIT_COMMITTER_DATE": "@1 +0000",
+        },
+    )
+    (root / "tracked.txt").write_text("changed\n", encoding="utf-8")
+    os.chmod(root / "tracked.txt", 0o600)
+    (root / "old.txt").unlink()
+    (root / "new.txt").write_text("untracked\n", encoding="utf-8")
+    (root / "renamed-from.txt").unlink()
+    (root / "renamed-to.txt").write_text("rename source\n", encoding="utf-8")
+    os.chmod(root / "new.txt", 0o644)
+    os.chmod(root / "renamed-to.txt", 0o644)
+    (root / "nested").mkdir()
+    os.chmod(root / "nested", 0o755)
+    (root / "nested" / "inside.txt").write_text("inside\n", encoding="utf-8")
+    os.chmod(root / "nested" / "inside.txt", 0o644)
+    os.symlink("unicode.txt", root / "link")
 
 
 class SnapshotToolTests(unittest.TestCase):
-    def run_git(self, root: Path, *args: str, environment: dict[str, str] | None = None) -> None:
-        env = os.environ.copy()
-        if environment:
-            env.update(environment)
-        subprocess.run(
-            ["git", "-C", str(root), *args],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=env,
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cls.repository_template = GitRepositoryTemplate(
+            _build_snapshot_repository
         )
+        cls.addClassCleanup(cls.repository_template.cleanup)
+
+    def run_git(self, root: Path, *args: str, environment: dict[str, str] | None = None) -> None:
+        _run_fixture_git(root, *args, environment=environment)
 
     def write_scope(self, path: Path) -> None:
         scope = {
@@ -63,35 +131,29 @@ class SnapshotToolTests(unittest.TestCase):
         path.write_text(json.dumps(scope, ensure_ascii=False), encoding="utf-8")
 
     def setup_repository(self, root: Path) -> None:
-        root.mkdir()
-        self.run_git(root, "-c", "init.defaultBranch=main", "init", "-q")
-        self.run_git(root, "config", "user.email", "test@example.invalid")
-        self.run_git(root, "config", "user.name", "Snapshot Test")
-        (root / "tracked.txt").write_text("base\n", encoding="utf-8")
-        (root / "unicode.txt").write_text("雪\n", encoding="utf-8")
-        (root / "binary.bin").write_bytes(b"\x00\xff\x01")
-        (root / "old.txt").write_text("will be deleted\n", encoding="utf-8")
-        (root / "renamed-from.txt").write_text("rename source\n", encoding="utf-8")
-        self.run_git(root, "add", "tracked.txt", "unicode.txt", "binary.bin", "old.txt", "renamed-from.txt")
-        self.run_git(
-            root,
-            "commit",
-            "-qm",
-            "base",
-            environment={
-                "GIT_AUTHOR_DATE": "@1 +0000",
-                "GIT_COMMITTER_DATE": "@1 +0000",
-            },
-        )
-        (root / "tracked.txt").write_text("changed\n", encoding="utf-8")
-        os.chmod(root / "tracked.txt", 0o600)
-        (root / "old.txt").unlink()
-        (root / "new.txt").write_text("untracked\n", encoding="utf-8")
-        (root / "renamed-from.txt").unlink()
-        (root / "renamed-to.txt").write_text("rename source\n", encoding="utf-8")
-        (root / "nested").mkdir()
-        (root / "nested" / "inside.txt").write_text("inside\n", encoding="utf-8")
-        os.symlink("unicode.txt", root / "link")
+        self.repository_template.copy_to(root)
+
+    def test_fixture_builder_ignores_hostile_caller_git_environment(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary)
+            hostile_config = parent / "hostile.gitconfig"
+            hostile_config.write_text("invalid git configuration\n", encoding="utf-8")
+            hostile_environment = {
+                "GIT_CONFIG_COUNT": "invalid",
+                "GIT_CONFIG_GLOBAL": str(hostile_config),
+                "GIT_CONFIG_NOSYSTEM": "0",
+                "GIT_DIR": str(parent / "missing" / "hostile.git"),
+            }
+            with mock.patch.dict(os.environ, hostile_environment, clear=False):
+                template = GitRepositoryTemplate(_build_snapshot_repository)
+            try:
+                self.assertTrue((template.path / ".git").is_dir())
+                self.assertEqual(
+                    (template.path / "tracked.txt").read_text(encoding="utf-8"),
+                    "changed\n",
+                )
+            finally:
+                template.cleanup()
 
     def git_state(self, root: Path) -> dict[str, tuple]:
         git_root = root / ".git"
@@ -124,14 +186,21 @@ class SnapshotToolTests(unittest.TestCase):
             git_before = self.git_state(root)
             created = snapshot_tool.create_snapshot(str(root), str(scope), str(artifact))
             self.assertEqual(self.git_state(root), git_before)
-            self.assertEqual(created["content_identity"], "df2f6ca5488bf605ee713a79004aa79c3d124055408d79069442acb73db0c910")
-            self.assertEqual(created["manifest_identity"], "a78714df97d09975c65df806d72d8feec5a58feee1a96759665b25ccbd5df9b9")
-            self.assertTrue(snapshot_tool.verify_artifact(str(artifact))["valid"])
+            self.assertEqual(created["content_identity"], "554eccdfe1e5cc9e6b8ab2bd67d2d8d5022d5a6d598611522cd5f9d3df683f11")
+            self.assertEqual(created["manifest_identity"], "853f905ecfb4da6242f426312cdf057d4ec8027646f81bb428904e92c7ab71b7")
+            manifest = json.loads(
+                (artifact / "manifest.json").read_text(encoding="utf-8")
+            )
+            verified = snapshot_tool.verify_artifact(str(artifact))
+            self.assertTrue(verified["valid"])
+            self.assertEqual(
+                verified["base_git_identity"], manifest["base_git_identity"]
+            )
             code, compared = snapshot_tool.compare_workspace(str(root), str(artifact))
             self.assertEqual(code, 0)
             self.assertTrue(compared["match"])
 
-            entries = json.loads((artifact / "manifest.json").read_text(encoding="utf-8"))["entries"]
+            entries = manifest["entries"]
             by_path = {entry["path"]: entry for entry in entries}
             self.assertEqual(by_path["old.txt"]["type"], "deleted")
             self.assertEqual(by_path["renamed-from.txt"]["type"], "deleted")
@@ -184,7 +253,12 @@ class SnapshotToolTests(unittest.TestCase):
             shutil.rmtree(copied_root / "scripts" / "__pycache__", ignore_errors=True)
             environment = os.environ.copy()
             environment.pop("PYTHONDONTWRITEBYTECODE", None)
-            for helper in ("snapshot_tool.py", "doctor.py"):
+            for helper in (
+                "snapshot_tool.py",
+                "doctor.py",
+                "validate_metadata.py",
+                "workflow_tool.py",
+            ):
                 result = subprocess.run(
                     [sys.executable, str(copied_root / "scripts" / helper), "--help"],
                     check=False,
@@ -210,6 +284,35 @@ class SnapshotToolTests(unittest.TestCase):
             code, compared = snapshot_tool.compare_workspace(str(root), str(artifact), str(scope))
             self.assertEqual(code, 0)
             self.assertTrue(compared["match"])
+
+    def test_git_identity_records_assume_unchanged_and_skip_worktree_flags(self) -> None:
+        flag_cases = (
+            ("--assume-unchanged", "--no-assume-unchanged"),
+            ("--skip-worktree", "--no-skip-worktree"),
+        )
+        for enabled, disabled in flag_cases:
+            with self.subTest(flag=enabled), tempfile.TemporaryDirectory() as temporary:
+                parent = Path(temporary)
+                root = parent / "repo"
+                self.setup_repository(root)
+                scope = parent / "scope.json"
+                self.write_scope(scope)
+                artifact = parent / "artifact"
+                snapshot_tool.create_snapshot(str(root), str(scope), str(artifact))
+                before = snapshot_tool.git_identity(root)
+
+                self.run_git(root, "update-index", enabled, "unicode.txt")
+                flagged = snapshot_tool.git_identity(root)
+                self.assertNotEqual(flagged["index_tree"], before["index_tree"])
+                code, compared = snapshot_tool.compare_workspace(
+                    str(root), str(artifact), str(scope)
+                )
+                self.assertEqual(code, 1)
+                self.assertEqual(compared["reason"], "GIT_IDENTITY_MISMATCH")
+
+                self.run_git(root, "update-index", disabled, "unicode.txt")
+                restored = snapshot_tool.git_identity(root)
+                self.assertEqual(restored, before)
 
     def test_maximum_source_depth_accounts_for_artifact_prefix(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -344,6 +447,36 @@ class SnapshotToolTests(unittest.TestCase):
             with self.assertRaises(snapshot_tool.SnapshotError):
                 snapshot_tool.verify_artifact(str(artifact))
 
+    def test_manifest_rejects_boolean_file_and_symlink_sizes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary)
+            root = parent / "repo"
+            self.setup_repository(root)
+            scope = parent / "scope.json"
+            self.write_scope(scope)
+            artifact = parent / "artifact"
+            snapshot_tool.create_snapshot(str(root), str(scope), str(artifact))
+            manifest = json.loads((artifact / "manifest.json").read_text(encoding="utf-8"))
+
+            forged_file = json.loads(json.dumps(manifest))
+            file_entry = next(entry for entry in forged_file["entries"] if entry["type"] == "file")
+            file_entry["size"] = True
+            forged_file["content_identity"] = snapshot_tool._content_identity(forged_file)
+            forged_file["manifest_identity"] = snapshot_tool._manifest_identity(forged_file)
+
+            forged_symlink = json.loads(json.dumps(manifest))
+            symlink_entry = next(entry for entry in forged_symlink["entries"] if entry["type"] == "symlink")
+            symlink_entry["size"] = True
+            symlink_entry["symlink_target"] = "x"
+            symlink_entry["content_hash"] = snapshot_tool._digest(b"x", "snapshot_entry")
+            forged_symlink["content_identity"] = snapshot_tool._content_identity(forged_symlink)
+            forged_symlink["manifest_identity"] = snapshot_tool._manifest_identity(forged_symlink)
+
+            for entry_type, forged in (("file", forged_file), ("symlink", forged_symlink)):
+                with self.subTest(entry_type=entry_type):
+                    with self.assertRaisesRegex(snapshot_tool.SnapshotError, "size/artifact_path is invalid"):
+                        snapshot_tool._validate_manifest(forged)
+
     def test_manifest_contract_is_closed_and_drives_artifact_layout(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             parent = Path(temporary)
@@ -364,7 +497,32 @@ class SnapshotToolTests(unittest.TestCase):
             self.assertEqual(snapshot_tool.ARTIFACT_PREFIXES, {"files": "files", "baseline": "baseline"})
             self.assertLessEqual(len(manifest["entries"]), snapshot_tool.MAX_ENTRIES)
             self.assertLessEqual(len(manifest["baseline_entries"]), snapshot_tool.MAX_ENTRIES)
+            self.assertLessEqual(
+                len(manifest["scope_paths"]), snapshot_tool.MAX_SCOPE_PATHS
+            )
             self.assertEqual(set(os.listdir(artifact)), snapshot_tool.TOP_LEVEL)
+
+    def test_manifest_rejects_too_many_scope_paths_before_cross_checks(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary)
+            root = parent / "repo"
+            self.setup_repository(root)
+            scope = parent / "scope.json"
+            self.write_scope(scope)
+            artifact = parent / "artifact"
+            snapshot_tool.create_snapshot(str(root), str(scope), str(artifact))
+            manifest = json.loads(
+                (artifact / "manifest.json").read_text(encoding="utf-8")
+            )
+            manifest["scope_paths"] = [
+                f"path-{index:04d}"
+                for index in range(snapshot_tool.MAX_SCOPE_PATHS + 1)
+            ]
+            with self.assertRaisesRegex(
+                snapshot_tool.SnapshotError,
+                "scope_paths exceed the bounded snapshot scope",
+            ):
+                snapshot_tool._validate_manifest(manifest)
 
     def test_drive_relative_and_symlinked_roots_are_rejected(self) -> None:
         with self.assertRaises(snapshot_tool.ContractError):
@@ -455,6 +613,81 @@ class SnapshotToolTests(unittest.TestCase):
             os.symlink(parent / "missing-artifact", output)
             with self.assertRaises(snapshot_tool.SnapshotError):
                 snapshot_tool.create_snapshot(str(root), str(scope), str(output))
+
+    def test_double_slash_alias_cannot_place_artifact_inside_repository(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary)
+            root = parent / "repo"
+            self.setup_repository(root)
+            (root / ".gitignore").write_text("ignored/\n", encoding="utf-8")
+            self.run_git(root, "add", ".gitignore")
+            self.run_git(root, "commit", "-qm", "ignore artifact directory")
+            ignored = root / "ignored"
+            ignored.mkdir()
+            scope = parent / "scope.json"
+            self.write_scope(scope)
+
+            cases = (
+                ("/" + str(root), str(ignored / "artifact-from-root-alias")),
+                (str(root), "/" + str(ignored / "artifact-from-output-alias")),
+            )
+            for root_arg, output_arg in cases:
+                with self.subTest(root_arg=root_arg, output_arg=output_arg):
+                    with self.assertRaisesRegex(
+                        snapshot_tool.SnapshotError,
+                        "artifact output must be outside the repository root",
+                    ):
+                        snapshot_tool.create_snapshot(
+                            root_arg, str(scope), output_arg
+                        )
+                    self.assertFalse(
+                        snapshot_tool._canonical_absolute_path(output_arg).exists()
+                    )
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "named pipes require POSIX")
+    def test_untrusted_fifo_read_opens_do_not_wait_for_a_writer(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary)
+            candidate = parent / "candidate"
+            candidate.write_text("regular\n", encoding="utf-8")
+            regular_stat = os.stat(candidate)
+            candidate.unlink()
+            os.mkfifo(candidate)
+            parent_descriptor = os.open(parent, snapshot_tool._directory_flags())
+            try:
+                with fail_if_call_blocks(), self.assertRaisesRegex(
+                    snapshot_tool.SnapshotError, "changed type while reading"
+                ):
+                    snapshot_tool._read_regular_file(
+                        parent_descriptor,
+                        candidate.name,
+                        regular_stat,
+                        candidate.name,
+                    )
+                with fail_if_call_blocks(), self.assertRaisesRegex(
+                    snapshot_tool.SnapshotError, "not a regular file"
+                ):
+                    snapshot_tool._read_artifact_file(
+                        parent_descriptor, candidate.name
+                    )
+            finally:
+                os.close(parent_descriptor)
+
+            artifact = parent / "artifact"
+            artifact.mkdir()
+            os.mkfifo(artifact / "manifest.json")
+            artifact_descriptor = os.open(
+                artifact, snapshot_tool._directory_flags()
+            )
+            try:
+                with fail_if_call_blocks(), self.assertRaisesRegex(
+                    snapshot_tool.SnapshotError, "not a regular file"
+                ):
+                    snapshot_tool._read_manifest_from_descriptor(
+                        artifact_descriptor, artifact
+                    )
+            finally:
+                os.close(artifact_descriptor)
 
     def test_existing_output_directory_is_not_repermissioned_on_rejection(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -970,15 +1203,31 @@ class SnapshotToolTests(unittest.TestCase):
             fake_git.chmod(0o700)
             descriptor = snapshot_tool._open_root_fd(root)
             try:
-                started = __import__("time").monotonic()
-                with mock.patch.dict(os.environ, {"PATH": str(fake_bin)}), mock.patch.object(
-                    snapshot_tool, "GIT_TIMEOUT_SECONDS", 1
-                ):
-                    with self.assertRaisesRegex(snapshot_tool.SnapshotError, "exceeded 1 seconds"):
+                with mock.patch.object(
+                    snapshot_tool, "GIT_EXECUTABLE", str(fake_git)
+                ), mock.patch.object(snapshot_tool, "GIT_TIMEOUT_SECONDS", 0.15):
+                    with self.assertRaisesRegex(snapshot_tool.SnapshotError, "exceeded 0.15 seconds"):
                         snapshot_tool._run_git(descriptor, "status")
-                self.assertLess(__import__("time").monotonic() - started, 5)
             finally:
                 os.close(descriptor)
+
+    def test_git_executable_does_not_follow_caller_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary)
+            root = parent / "repo"
+            self.setup_repository(root)
+            fake_bin = parent / "bin"
+            fake_bin.mkdir()
+            marker = parent / "fake-git-ran"
+            fake_git = fake_bin / "git"
+            fake_git.write_text(
+                f"#!/bin/sh\ntouch {marker}\nexit 99\n", encoding="utf-8"
+            )
+            fake_git.chmod(0o700)
+            with mock.patch.dict(os.environ, {"PATH": str(fake_bin)}):
+                identity = snapshot_tool.git_identity(root)
+            self.assertFalse(marker.exists())
+            self.assertIn("head", identity)
 
     def run_git_output(self, root: Path, *args: str) -> str:
         return subprocess.run(
@@ -987,7 +1236,7 @@ class SnapshotToolTests(unittest.TestCase):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            env={key: value for key, value in os.environ.items() if not key.startswith("GIT_")},
+            env=fixture_git_environment(),
         ).stdout.strip()
 
     def test_expected_identities_are_enforced(self) -> None:
@@ -1126,6 +1375,31 @@ class SnapshotToolTests(unittest.TestCase):
             with mock.patch.object(snapshot_tool, "MAX_GIT_OUTPUT_BYTES", 2):
                 with self.assertRaisesRegex(snapshot_tool.SnapshotError, "Git output exceeds 2"):
                     snapshot_tool.git_identity(root)
+
+    def test_verification_counts_manifest_bytes_in_artifact_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary)
+            root = parent / "repo"
+            self.setup_repository(root)
+            scope = parent / "scope.json"
+            self.write_scope(scope)
+            artifact = parent / "artifact"
+            snapshot_tool.create_snapshot(str(root), str(scope), str(artifact))
+
+            manifest_bytes = (artifact / "manifest.json").read_bytes()
+            manifest = json.loads(manifest_bytes)
+            content_bytes = sum(
+                entry["size"]
+                for entry in manifest["entries"] + manifest["baseline_entries"]
+                if entry["type"] == "file"
+            )
+            too_small = content_bytes + len(manifest_bytes) - 1
+            with mock.patch.object(snapshot_tool, "MAX_TOTAL_BYTES", too_small):
+                with self.assertRaisesRegex(
+                    snapshot_tool.SnapshotError,
+                    "artifact exceeds the declared total byte limit",
+                ):
+                    snapshot_tool.verify_artifact(str(artifact))
 
     def test_compare_rechecks_workspace_content_with_stable_git_inventory(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

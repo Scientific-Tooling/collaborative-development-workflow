@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import copy
+import os
 import subprocess
 import sys
 import tempfile
@@ -9,9 +10,12 @@ import unittest
 from pathlib import Path
 
 
-sys.path.insert(0, "scripts")
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(ROOT / "scripts"))
 
 import contract_tool
+from deadline_guard import fail_if_call_blocks
 
 
 class ContractToolTests(unittest.TestCase):
@@ -30,7 +34,12 @@ class ContractToolTests(unittest.TestCase):
         return {
             "version": "impact-scope-v2",
             "changed_paths": ["src/./main.py", "README.md"],
-            "review_paths": ["src/./main.py", "README.md", "tests/test_main.py"],
+            "review_paths": [
+                "src/./main.py",
+                "README.md",
+                "tests/test_main.py",
+                "pyproject.toml",
+            ],
             "direct_callers": ["module:entry"],
             "direct_consumers": ["tests/test_main.py"],
             "mapped_tests_or_configuration": ["pyproject.toml"],
@@ -50,6 +59,11 @@ class ContractToolTests(unittest.TestCase):
             "blocker_or_input": None,
             "attention_required": [],
             "next_action": None,
+            "model_profile": {
+                "model": "unknown",
+                "effort": "unknown",
+                "selection_outcome": "unknown",
+            },
         }
 
     def golden_records(self) -> dict[str, dict]:
@@ -126,7 +140,12 @@ class ContractToolTests(unittest.TestCase):
             "objective": "review",
             "depends_on": [],
             "acceptance_criteria": [{"criterion_id": "criterion-1", "status": "pending", "summary": "review"}],
-            "read_scope": ["README.md", "src/main.py", "tests/test_main.py"],
+            "read_scope": [
+                "README.md",
+                "pyproject.toml",
+                "src/main.py",
+                "tests/test_main.py",
+            ],
             "write_scope": [],
             "impact_scope": scope,
             "base_snapshot": "snapshot-1",
@@ -141,6 +160,7 @@ class ContractToolTests(unittest.TestCase):
                 "max_output_bytes": 65536,
             },
             "resumable": False,
+            "model_request": self.model_request(),
             "model_profile": {"model": "unknown"},
             "full_suite_owner": "main",
             "snapshot_id": "a" * 64,
@@ -172,11 +192,14 @@ class ContractToolTests(unittest.TestCase):
         }
         capability = {
             "version": "capability-preflight-v2",
+            "run_id": "run-1",
             "mode": "portable",
             "result": "PORTABLE_READY",
             "capabilities": {name: True for name in contract_tool.PORTABLE_CAPABILITIES},
             "missing": [],
             "authority": "observed_tool_surface",
+            "read_only_enforcement": "custom_agent_sandbox",
+            "artifact_only_read_enforcement": "none",
         }
         workflow = {
             "version": "workflow-outcome-v2",
@@ -227,7 +250,6 @@ class ContractToolTests(unittest.TestCase):
     def acceptance_evidence(self) -> dict:
         records = self.golden_records()
         task = copy.deepcopy(records["task_spec"])
-        task["model_request"] = self.model_request()
         task["acceptance_criteria"][0]["status"] = "met"
         task["focused_checks"] = [copy.deepcopy(records["focused_check"])]
         task["focused_checks"][0]["covered_scope"] = ["src/main.py", "README.md"]
@@ -245,7 +267,12 @@ class ContractToolTests(unittest.TestCase):
                 "content_identity": task["content_identity"],
                 "artifact_access_proof": task["artifact_access_proof"],
                 "review_coverage_proof": task["review_coverage_proof"],
-                "reviewed_paths": ["README.md", "src/main.py", "tests/test_main.py"],
+                "reviewed_paths": [
+                    "README.md",
+                    "pyproject.toml",
+                    "src/main.py",
+                    "tests/test_main.py",
+                ],
                 "findings": [],
                 "risks": [],
                 "model_profile": {
@@ -267,7 +294,12 @@ class ContractToolTests(unittest.TestCase):
             "manifest_identity": task["snapshot_id"],
             "content_identity": task["content_identity"],
             "impact_scope_digest": scope_digest,
-            "scope_paths": ["README.md", "src/main.py", "tests/test_main.py"],
+            "scope_paths": [
+                "README.md",
+                "pyproject.toml",
+                "src/main.py",
+                "tests/test_main.py",
+            ],
             "reviewer_result_digest": result_digest,
             "artifact_verification_status": "PASSED",
             "workspace_compare_status": "PASSED",
@@ -283,7 +315,12 @@ class ContractToolTests(unittest.TestCase):
                 artifact, "artifact_access_proof"
             ),
             "reviewer_result_digest": result_digest,
-            "review_paths": ["README.md", "src/main.py", "tests/test_main.py"],
+            "review_paths": [
+                "README.md",
+                "pyproject.toml",
+                "src/main.py",
+                "tests/test_main.py",
+            ],
             "completed_scope": result["completed_scope"],
             "required_check_ids": ["focused"],
             "passed_check_ids": ["focused"],
@@ -394,17 +431,17 @@ class ContractToolTests(unittest.TestCase):
 
     def test_existing_record_digests_are_golden(self) -> None:
         expected = {
-            "impact_scope": "4ce5162032edabc332e71c84a22d4aafb684b01649d78d92dd67c110b7cf5edc",
+            "impact_scope": "37f2eda6ea211928cf6b3c11d114d359142fda3eaafc5da37c115db5c0d043a3",
             "focused_check": "2bb24f579713cd777c7a596e6e1bd30ca33e9f9ef15eaaa19eee02b84c4df85a",
-            "capability_preflight": "cffd5cf2dc3876692c4bbb4a8d01ae75db6ab156877eb4381dd8bf920a4f6273",
-            "role_result": "b37d64d311f784ca7cbea4681d92becb334cf1da0b3a7bcd561b10a2c12fb18b",
+            "capability_preflight": "fd8d19b252f44ed09aaae650ad99d0c219dc9e8144b1b0d985553f15f4c98897",
+            "role_result": "ed90fa62120d937471da4f5ab545ab0234297b7753f1d31c1e41d7f2372ea093",
             "workflow_outcome": "fe281cc1bfd24a839e2c48c7ed9a6048c13ae37b3f11aa67d73df1a2b26df827",
-            "task_spec": "78ba6dc8d1feabb1025710e8d7654f74e2828c3efc25733c6aeb478a3febbb69",
+            "task_spec": "81aa9462097287f30a37eef80e19d0ed701cee1a3c1ecd5ad32840781b483f76",
             "runtime_completion_event": "35bf53446008f84a8ce8ba9cdadc849f16602dfa0071f300e879bd15f42d46b3",
             "runtime_terminal_event": "e2534b584bc4f0c2a34e14b49fc427a759fe7a3cc2f00319722ab09adb462d71",
             "runtime_stop_event": "4b7e7c6db8206befdb31bad2b79457ec0accf210b656f15e1cad6311bf14da3b",
             "runtime_event_sequence": "81db69007e02192f2368cb6d380b89373d486cdd2049b164814ec443313f7282",
-            "context_handoff": "68507785858c9b34bf0495abd9fa23a02983899b418d222b369e87042dfd2c93",
+            "context_handoff": "fcffc6b3f5f4bab5b58e56bcc740e17b9d480a18994fb0dcbf0bc6921974a3ba",
             "model_request": "143af618a8cec2322c0267067734b90ffc7cb164cb90773bab55b7018f3d61c2",
         }
         records = self.golden_records()
@@ -430,6 +467,38 @@ class ContractToolTests(unittest.TestCase):
             self.assertTrue(
                 contract_tool.validate_record(tampered, "acceptance_evidence"), path
             )
+
+    def test_not_accepted_evidence_still_binds_supplied_identities(self) -> None:
+        evidence = self.acceptance_evidence()
+        evidence["workflow_outcome"].update(
+            outcome="NOT_ACCEPTED",
+            accepted=False,
+            reason="VALIDATION_FAILED",
+            validation_status="FAILED",
+            validation_checks=[
+                {"id": "full", "status": "FAILED", "summary": "suite failed"}
+            ],
+        )
+        self.assertEqual(
+            contract_tool.validate_record(evidence, "acceptance_evidence"), []
+        )
+
+        for field, replacement in (
+            ("capability_preflight_digest", "0" * 64),
+            ("final_review_round_digest", "0" * 64),
+            ("snapshot_id", "0" * 64),
+            ("content_identity", "0" * 64),
+            ("capability_preflight_digest", None),
+            ("final_review_round_digest", None),
+            ("snapshot_id", None),
+            ("content_identity", None),
+        ):
+            with self.subTest(field=field, replacement=replacement):
+                tampered = copy.deepcopy(evidence)
+                tampered["workflow_outcome"][field] = replacement
+                self.assertTrue(
+                    contract_tool.validate_record(tampered, "acceptance_evidence")
+                )
 
     def test_accepted_outcome_requires_acceptance_state(self) -> None:
         outcome = copy.deepcopy(self.golden_records()["workflow_outcome"])
@@ -731,6 +800,44 @@ class ContractToolTests(unittest.TestCase):
         with self.assertRaises(contract_tool.ContractError):
             contract_tool._prepare_contract(unknown_field_spec)
 
+    def test_contract_canonicalization_declaration_is_closed(self) -> None:
+        raw = contract_tool.load_json_file(str(contract_tool.CONTRACT_PATH))
+        mutations = []
+
+        unknown = copy.deepcopy(raw)
+        unknown["canonicalization"]["unexpected"] = True
+        mutations.append(unknown)
+
+        string_schemes = copy.deepcopy(raw)
+        string_schemes["canonicalization"]["semantic_reference_schemes"] = "module"
+        mutations.append(string_schemes)
+
+        duplicate_schemes = copy.deepcopy(raw)
+        duplicate_schemes["canonicalization"]["semantic_reference_schemes"] = [
+            "module",
+            "module",
+        ]
+        mutations.append(duplicate_schemes)
+
+        nontext_schemes = copy.deepcopy(raw)
+        nontext_schemes["canonicalization"]["semantic_reference_schemes"] = [{}]
+        mutations.append(nontext_schemes)
+
+        invalid_path_scheme = copy.deepcopy(raw)
+        invalid_path_scheme["canonicalization"][
+            "explicit_path_reference_scheme"
+        ] = "module"
+        mutations.append(invalid_path_scheme)
+
+        invalid_domain = copy.deepcopy(raw)
+        invalid_domain["canonicalization"]["domains"]["record"] = "not-delimited"
+        mutations.append(invalid_domain)
+
+        for mutation in mutations:
+            with self.subTest(mutation=mutation["canonicalization"]):
+                with self.assertRaises(contract_tool.ContractError):
+                    contract_tool._prepare_contract(mutation)
+
     def test_describe_returns_effective_record_and_section_json(self) -> None:
         repository = Path(__file__).resolve().parents[1]
         record_result = subprocess.run(
@@ -831,21 +938,210 @@ class ContractToolTests(unittest.TestCase):
         absolute["changed_paths"] = ["/tmp/secret"]
         self.assertTrue(contract_tool.validate_record(absolute, "impact_scope"))
 
+    def test_named_path_references_must_be_covered_by_review_paths(self) -> None:
+        field_values = {
+            "direct_callers": "scripts/caller.py",
+            "direct_consumers": "CONSUMER.md",
+            "mapped_tests_or_configuration": "pyproject.toml",
+        }
+        for field, path in field_values.items():
+            with self.subTest(field=field):
+                record = self.impact_scope()
+                record[field] = [path]
+                record["review_paths"] = [
+                    candidate
+                    for candidate in record["review_paths"]
+                    if contract_tool.normalize_repo_path(candidate) != path
+                ]
+                errors = contract_tool.validate_record(record, "impact_scope")
+                self.assertTrue(
+                    any(
+                        f"{field} paths are not covered by review_paths" in error
+                        for error in errors
+                    )
+                )
+
+        symbolic = self.impact_scope()
+        symbolic["direct_callers"] = ["module:entry"]
+        self.assertEqual(contract_tool.validate_record(symbolic, "impact_scope"), [])
+
+        file_location = self.impact_scope()
+        file_location["changed_paths"] = ["src/main.py"]
+        file_location["direct_callers"] = ["README.md:12"]
+        file_location["review_paths"] = [
+            path for path in file_location["review_paths"] if path != "README.md"
+        ]
+        errors = contract_tool.validate_record(file_location, "impact_scope")
+        self.assertTrue(
+            any("direct_callers paths are not covered" in error for error in errors)
+        )
+
+        numeric_symbol = self.impact_scope()
+        numeric_symbol["direct_callers"] = ["module:123"]
+        self.assertIsNone(
+            contract_tool._scope_reference_repo_path("module:123")
+        )
+        self.assertEqual(
+            contract_tool.validate_record(numeric_symbol, "impact_scope"), []
+        )
+
+        escaped_path = self.impact_scope()
+        escaped_path["direct_callers"] = ["file:module:123"]
+        escaped_path["review_paths"].append("module:123")
+        self.assertEqual(
+            contract_tool._scope_reference_repo_path("file:module:123"),
+            "module:123",
+        )
+        self.assertEqual(
+            contract_tool.validate_record(escaped_path, "impact_scope"), []
+        )
+
+    def test_explicit_file_references_are_validated_and_canonicalized(self) -> None:
+        malformed = ("file:", "file:/abs", "file:C:/x", "file:../x")
+        for value in malformed:
+            with self.subTest(record="focused_check", value=value):
+                focused = copy.deepcopy(self.golden_records()["focused_check"])
+                focused["covered_scope"] = [value]
+                self.assertTrue(
+                    contract_tool.validate_record(focused, "focused_check")
+                )
+            with self.subTest(record="role_result", value=value):
+                result = self.role_result("reviewer", "CLEAN")
+                result["completed_scope"] = [value]
+                self.assertTrue(
+                    contract_tool.validate_record(result, "role_result")
+                )
+
+        focused = copy.deepcopy(self.golden_records()["focused_check"])
+        focused["covered_scope"] = ["file:src/./main.py", "file:file:foo"]
+        canonical = contract_tool.canonicalize_record(focused, "focused_check")
+        self.assertEqual(
+            canonical["covered_scope"], ["file:file:foo", "file:src/main.py"]
+        )
+        self.assertEqual(
+            contract_tool._scope_reference_repo_path("file:file:foo"), "file:foo"
+        )
+
+        longest_path = "x" * contract_tool.CONTRACT["limits"]["path_bytes"]
+        focused["covered_scope"] = [f"file:{longest_path}"]
+        self.assertEqual(
+            contract_tool.validate_record(focused, "focused_check"), []
+        )
+
+    def test_semantic_references_cannot_cover_changed_repository_paths(self) -> None:
+        evidence = self.acceptance_evidence()
+        review_round = evidence["review_rounds"][0]
+        task = review_round["task_spec"]
+        task["impact_scope"].update(
+            changed_paths=["module:entry"],
+            review_paths=["module:entry"],
+            direct_callers=[],
+            direct_consumers=[],
+            mapped_tests_or_configuration=[],
+            explicit_exclusions=[],
+        )
+        task["read_scope"] = ["module:entry"]
+        task["focused_checks"][0]["covered_scope"] = ["module:entry"]
+        result = review_round["review_result"]
+        result.update(
+            completed_scope=["module:entry"],
+            reviewed_paths=["module:entry"],
+        )
+        result_digest = contract_tool.digest_record(result, "role_result")
+        scope_digest = contract_tool.digest_record(task["impact_scope"], "impact_scope")
+        artifact = review_round["artifact_access_proof"]
+        artifact.update(
+            impact_scope_digest=scope_digest,
+            scope_paths=["module:entry"],
+            reviewer_result_digest=result_digest,
+        )
+        coverage = review_round["review_coverage_proof"]
+        coverage.update(
+            impact_scope_digest=scope_digest,
+            artifact_access_proof_digest=contract_tool.digest_record(
+                artifact, "artifact_access_proof"
+            ),
+            reviewer_result_digest=result_digest,
+            review_paths=["module:entry"],
+            completed_scope=["module:entry"],
+        )
+        errors = contract_tool.validate_record(evidence, "acceptance_evidence")
+        self.assertTrue(
+            any("required focused check focused does not cover" in error for error in errors)
+        )
+
+        task["focused_checks"][0]["covered_scope"] = ["file:module:entry"]
+        evidence["workflow_outcome"]["final_review_round_digest"] = (
+            contract_tool.digest_record(review_round, "review_round")
+        )
+        self.assertEqual(
+            contract_tool.validate_record(evidence, "acceptance_evidence"), []
+        )
+
+        task["focused_checks"][0]["covered_scope"] = ["module:entry:12"]
+        self.assertEqual(
+            contract_tool._scope_reference_repo_path("module:entry:12"), None
+        )
+
+        for colon_path in ("report:2024", "src/name:L12", "src/name:12:3"):
+            with self.subTest(colon_path=colon_path):
+                self.assertEqual(
+                    contract_tool._scope_reference_repo_path(f"file:{colon_path}"),
+                    colon_path,
+                )
+
+        task["impact_scope"]["changed_paths"] = ["README.md"]
+        task["impact_scope"]["review_paths"] = ["README.md"]
+        task["read_scope"] = ["README.md"]
+        task["focused_checks"][0]["covered_scope"] = ["README.md:12"]
+        result.update(completed_scope=["README.md"], reviewed_paths=["README.md"])
+        result_digest = contract_tool.digest_record(result, "role_result")
+        scope_digest = contract_tool.digest_record(task["impact_scope"], "impact_scope")
+        artifact.update(
+            impact_scope_digest=scope_digest,
+            scope_paths=["README.md"],
+            reviewer_result_digest=result_digest,
+        )
+        coverage.update(
+            impact_scope_digest=scope_digest,
+            artifact_access_proof_digest=contract_tool.digest_record(
+                artifact, "artifact_access_proof"
+            ),
+            reviewer_result_digest=result_digest,
+            review_paths=["README.md"],
+            completed_scope=["README.md"],
+        )
+        evidence["workflow_outcome"]["final_review_round_digest"] = (
+            contract_tool.digest_record(review_round, "review_round")
+        )
+        self.assertEqual(
+            contract_tool.validate_record(evidence, "acceptance_evidence"), []
+        )
+
     def test_review_paths_and_explicit_exclusions_cannot_overlap_by_ancestry(self) -> None:
         for review_path, excluded_path in (
             ("src", "src/secret.txt"),
             ("src/secret.txt", "src"),
             ("src/secret.txt", "src/secret.txt"),
+            ("README.md", "README.md:12"),
+            ("README.md", "README.md:L12:4"),
         ):
             with self.subTest(review_path=review_path, excluded_path=excluded_path):
                 record = self.impact_scope()
                 record["changed_paths"] = []
                 record["review_paths"] = [review_path]
+                record["direct_callers"] = []
+                record["direct_consumers"] = []
+                record["mapped_tests_or_configuration"] = []
                 record["explicit_exclusions"] = [excluded_path]
                 errors = contract_tool.validate_record(record, "impact_scope")
                 self.assertTrue(
                     any("review_paths overlap explicit_exclusions" in error for error in errors)
                 )
+
+        semantic = self.impact_scope()
+        semantic["explicit_exclusions"] = ["module:private_helper"]
+        self.assertEqual(contract_tool.validate_record(semantic, "impact_scope"), [])
 
     def test_duplicate_keys_and_non_finite_numbers_are_rejected(self) -> None:
         with self.assertRaises(contract_tool.ContractError):
@@ -884,11 +1180,14 @@ class ContractToolTests(unittest.TestCase):
         all_capabilities = {name: True for name in contract_tool.ALL_CAPABILITIES}
         strict = {
             "version": "capability-preflight-v2",
+            "run_id": "run-1",
             "mode": "strict",
             "result": "STRICT_READY",
             "capabilities": all_capabilities,
             "missing": [],
             "authority": "authoritative_runtime_record",
+            "read_only_enforcement": "custom_agent_sandbox",
+            "artifact_only_read_enforcement": "unknown",
         }
         self.assertTrue(contract_tool.validate_record(strict, "capability_preflight"))
         strict["result"] = "NOT_READY"
@@ -903,6 +1202,43 @@ class ContractToolTests(unittest.TestCase):
         self.assertEqual(contract_tool.validate_record(strict, "capability_preflight"), [])
         strict["missing"] = ["cas_state", "cas_state"]
         self.assertTrue(contract_tool.validate_record(strict, "capability_preflight"))
+
+    def test_portable_preflight_requires_verified_read_only_enforcement(self) -> None:
+        preflight = copy.deepcopy(self.golden_records()["capability_preflight"])
+        self.assertEqual(
+            contract_tool.validate_record(preflight, "capability_preflight"), []
+        )
+
+        preflight["artifact_only_read_enforcement"] = "none"
+        self.assertEqual(
+            contract_tool.validate_record(preflight, "capability_preflight"), []
+        )
+        preflight["artifact_only_read_enforcement"] = "invalid"
+        self.assertTrue(
+            contract_tool.validate_record(preflight, "capability_preflight")
+        )
+        preflight["artifact_only_read_enforcement"] = "none"
+        preflight["read_only_enforcement"] = "unverified"
+        self.assertTrue(
+            contract_tool.validate_record(preflight, "capability_preflight")
+        )
+        preflight["result"] = "NOT_READY"
+        self.assertEqual(
+            contract_tool.validate_record(preflight, "capability_preflight"), []
+        )
+
+    def test_acceptance_evidence_binds_preflight_run_id(self) -> None:
+        evidence = self.acceptance_evidence()
+        evidence["capability_preflight"]["run_id"] = "another-run"
+        evidence["workflow_outcome"][
+            "capability_preflight_digest"
+        ] = contract_tool.digest_record(
+            evidence["capability_preflight"], "capability_preflight"
+        )
+        errors = contract_tool.validate_record(evidence, "acceptance_evidence")
+        self.assertTrue(
+            any("run_id does not match capability preflight" in error for error in errors)
+        )
 
     def test_runtime_events_have_terminal_identity_and_successful_completion_shapes(self) -> None:
         completion = {
@@ -1140,6 +1476,111 @@ class ContractToolTests(unittest.TestCase):
         unavailable["commit_requested"] = True
         self.assertTrue(contract_tool.validate_record(unavailable, "workflow_outcome"))
 
+    def test_workflow_outcome_binds_validation_status_to_checks(self) -> None:
+        passed = copy.deepcopy(self.golden_records()["workflow_outcome"])
+        for mutation in (
+            {"validation_checks": []},
+            {
+                "validation_checks": [
+                    {"id": "full", "status": "FAILED", "summary": "failed"}
+                ]
+            },
+            {"full_validation_check_id": None},
+        ):
+            with self.subTest(status="PASSED", mutation=mutation):
+                invalid = copy.deepcopy(passed)
+                invalid.update(mutation)
+                self.assertTrue(
+                    contract_tool.validate_record(invalid, "workflow_outcome")
+                )
+
+        failed = copy.deepcopy(passed)
+        failed.update(
+            outcome="NOT_ACCEPTED",
+            accepted=False,
+            reason="VALIDATION_FAILED",
+            validation_status="FAILED",
+            validation_checks=[
+                {"id": "full", "status": "FAILED", "summary": "failed"}
+            ],
+        )
+        self.assertEqual(
+            contract_tool.validate_record(failed, "workflow_outcome"), []
+        )
+        failed["validation_checks"][0]["status"] = "PASSED"
+        self.assertTrue(contract_tool.validate_record(failed, "workflow_outcome"))
+        failed["validation_checks"][0]["status"] = "FAILED"
+        failed["full_validation_check_id"] = "missing"
+        self.assertTrue(contract_tool.validate_record(failed, "workflow_outcome"))
+
+        not_run = copy.deepcopy(passed)
+        not_run.update(
+            outcome="NOT_ACCEPTED",
+            accepted=False,
+            reason="USER_DECISION_REQUIRED",
+            validation_status="NOT_RUN",
+            validation_checks=[],
+            full_validation_check_id=None,
+        )
+        self.assertEqual(
+            contract_tool.validate_record(not_run, "workflow_outcome"), []
+        )
+        not_run["validation_checks"] = [
+            {"id": "full", "status": "PASSED", "summary": "passed"}
+        ]
+        self.assertTrue(contract_tool.validate_record(not_run, "workflow_outcome"))
+        not_run["validation_checks"][0]["status"] = "NOT_RUN"
+        not_run["full_validation_check_id"] = "full"
+        self.assertTrue(contract_tool.validate_record(not_run, "workflow_outcome"))
+
+    def test_acceptance_evidence_binds_review_disposition_to_delivered_result(self) -> None:
+        evidence = self.acceptance_evidence()
+        outcome = evidence["workflow_outcome"]
+        outcome.update(
+            outcome="NOT_ACCEPTED",
+            accepted=False,
+            review_status="REVIEW_UNAVAILABLE",
+            reason="REVIEW_UNAVAILABLE",
+        )
+        errors = contract_tool.validate_record(evidence, "acceptance_evidence")
+        self.assertTrue(any("cannot report REVIEW_UNAVAILABLE" in error for error in errors))
+
+        outcome.update(review_status="REVIEW_BLOCKED", reason="EVIDENCE_INVALID")
+        self.assertEqual(
+            contract_tool.validate_record(evidence, "acceptance_evidence"), []
+        )
+
+        outcome.update(review_status="FINDINGS", reason="EVIDENCE_INVALID")
+        errors = contract_tool.validate_record(evidence, "acceptance_evidence")
+        self.assertTrue(
+            any("FINDINGS review disposition requires" in error for error in errors)
+        )
+
+        review_round = evidence["review_rounds"][0]
+        result = review_round["review_result"]
+        result.update(
+            status="BLOCKED",
+            blocker_or_input="review could not finish",
+        )
+        result_digest = contract_tool.digest_record(result, "role_result")
+        artifact = review_round["artifact_access_proof"]
+        artifact["reviewer_result_digest"] = result_digest
+        coverage = review_round["review_coverage_proof"]
+        coverage["reviewer_result_digest"] = result_digest
+        coverage["artifact_access_proof_digest"] = contract_tool.digest_record(
+            artifact, "artifact_access_proof"
+        )
+        outcome["final_review_round_digest"] = contract_tool.digest_record(
+            review_round, "review_round"
+        )
+        outcome.update(review_status="CLEAN", reason="EVIDENCE_INVALID")
+        errors = contract_tool.validate_record(evidence, "acceptance_evidence")
+        self.assertTrue(any("final CLEAN result" in error for error in errors))
+        outcome.update(review_status="REVIEW_BLOCKED", reason="REVIEW_BLOCKED")
+        self.assertEqual(
+            contract_tool.validate_record(evidence, "acceptance_evidence"), []
+        )
+
     def test_workflow_reason_and_commit_metadata_are_cross_checked(self) -> None:
         accepted = copy.deepcopy(self.golden_records()["workflow_outcome"])
         accepted["commit_id"] = "commit-1"
@@ -1156,6 +1597,7 @@ class ContractToolTests(unittest.TestCase):
                 "accepted": False,
                 "review_status": "REVIEW_BLOCKED",
                 "reason": "STRICT_CAPABILITY_MISSING",
+                "validation_status": "NOT_RUN",
                 "commit_requested": False,
                 "commit_status": "NOT_REQUESTED",
                 "commit_blocker": None,
@@ -1185,6 +1627,53 @@ class ContractToolTests(unittest.TestCase):
         result = self.role_result()
         result["summary"] = "\ud800"
         self.assertTrue(contract_tool.validate_record(result, "role_result"))
+
+    def test_malformed_nested_records_return_deterministic_errors(self) -> None:
+        malformed_values = (None, [], "not-an-object")
+        for value in malformed_values:
+            with self.subTest(value=value):
+                task = copy.deepcopy(self.golden_records()["task_spec"])
+                task["impact_scope"] = value
+                first = contract_tool.validate_record(task, "task_spec")
+                second = contract_tool.validate_record(task, "task_spec")
+                self.assertEqual(first, second)
+                self.assertTrue(first)
+                self.assertTrue(
+                    any("record.impact_scope.record must be a JSON object" in error for error in first)
+                )
+
+        malformed_evidence = self.acceptance_evidence()
+        malformed_evidence["review_rounds"][0]["task_spec"]["impact_scope"][
+            "review_paths"
+        ] = None
+        errors = contract_tool.validate_record(
+            malformed_evidence, "acceptance_evidence"
+        )
+        self.assertTrue(errors)
+        self.assertEqual(
+            errors,
+            contract_tool.validate_record(malformed_evidence, "acceptance_evidence"),
+        )
+
+    def test_non_string_mapping_keys_return_validation_errors(self) -> None:
+        outer = self.impact_scope()
+        outer[1] = "unexpected"
+        outer_errors = contract_tool.validate_record(outer, "impact_scope")
+        self.assertTrue(any("non-string field name" in error for error in outer_errors))
+
+        nested = copy.deepcopy(self.golden_records()["task_spec"])
+        nested["impact_scope"][1] = "unexpected"
+        nested_errors = contract_tool.validate_record(nested, "task_spec")
+        self.assertTrue(any("non-string field name" in error for error in nested_errors))
+
+        capability = copy.deepcopy(self.golden_records()["capability_preflight"])
+        capability["capabilities"][1] = True
+        capability_errors = contract_tool.validate_record(
+            capability, "capability_preflight"
+        )
+        self.assertTrue(
+            any("non-string capability name" in error for error in capability_errors)
+        )
 
     def test_contract_cli_escapes_malformed_unicode_diagnostics(self) -> None:
         repository = Path(__file__).resolve().parents[1]
@@ -1240,6 +1729,16 @@ class ContractToolTests(unittest.TestCase):
             self.assertNotIn("Traceback", result.stderr)
             self.assertFalse(json.loads(result.stdout)["valid"])
 
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "named pipes require POSIX")
+    def test_file_input_fifo_is_rejected_without_waiting_for_a_writer(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fifo = Path(temporary) / "input.fifo"
+            os.mkfifo(fifo)
+            with fail_if_call_blocks(), self.assertRaisesRegex(
+                contract_tool.ContractError, "input is not a regular file"
+            ):
+                contract_tool.load_json_file(str(fifo))
+
     def test_context_handoff_distinguishes_independent_and_continuation(self) -> None:
         base = {
             "branch": "main",
@@ -1293,12 +1792,34 @@ class ContractToolTests(unittest.TestCase):
         common["artifacts"][0]["content_identity"] = "content-2"
         self.assertTrue(contract_tool.validate_record(common, "context_handoff"))
 
+    def test_execution_budget_values_have_explicit_maxima(self) -> None:
+        budget = copy.deepcopy(self.golden_records()["task_spec"]["budget"])
+        self.assertEqual(contract_tool.validate_record(budget, "execution_budget"), [])
+        limits = {
+            "wall_clock_seconds": "execution_wall_clock_seconds",
+            "max_turns": "execution_turns",
+            "max_output_bytes": "execution_output_bytes",
+        }
+        for field, limit_name in limits.items():
+            with self.subTest(field=field):
+                invalid = copy.deepcopy(budget)
+                invalid[field] = contract_tool.CONTRACT["limits"][limit_name] + 1
+                errors = contract_tool.validate_record(invalid, "execution_budget")
+                self.assertTrue(any("must not exceed" in error for error in errors))
+
+        huge = copy.deepcopy(budget)
+        huge["max_turns"] = 1 << 10000
+        self.assertTrue(contract_tool.validate_record(huge, "execution_budget"))
+
     def test_task_spec_is_closed_and_binding_mode_matches(self) -> None:
         task = copy.deepcopy(self.golden_records()["task_spec"])
-        self.assertNotIn("model_request", task)
         self.assertEqual(contract_tool.validate_record(task, "task_spec"), [])
-        task["model_request"] = self.model_request()
-        self.assertEqual(contract_tool.validate_record(task, "task_spec"), [])
+        missing_model_request = copy.deepcopy(task)
+        del missing_model_request["model_request"]
+        errors = contract_tool.validate_record(missing_model_request, "task_spec")
+        self.assertTrue(
+            any("missing required field(s): model_request" in error for error in errors)
+        )
         task["model_profile"] = {
             "model": "unknown",
             "effort": "unknown",
@@ -1308,6 +1829,38 @@ class ContractToolTests(unittest.TestCase):
         task["model_profile"] = {"model": "unknown"}
         task["binding_mode"] = "runtime_atomic"
         self.assertTrue(contract_tool.validate_record(task, "task_spec"))
+
+    def test_implementer_write_scope_is_bound_to_impact_scope(self) -> None:
+        task = copy.deepcopy(self.golden_records()["task_spec"])
+        task.update(
+            role="implementer",
+            mode="strict",
+            binding_mode="runtime_atomic",
+            binding_token="binding-1",
+            write_scope=["README.md", "src/main.py"],
+        )
+        self.assertEqual(contract_tool.validate_record(task, "task_spec"), [])
+
+        outside_review = copy.deepcopy(task)
+        outside_review["write_scope"] = ["README.md", "unreviewed"]
+        errors = contract_tool.validate_record(outside_review, "task_spec")
+        self.assertTrue(
+            any("write_scope is not covered" in error for error in errors)
+        )
+
+        outside_write_scope = copy.deepcopy(task)
+        outside_write_scope["write_scope"] = ["README.md"]
+        errors = contract_tool.validate_record(outside_write_scope, "task_spec")
+        self.assertTrue(
+            any("changed_paths are not covered by write_scope" in error for error in errors)
+        )
+
+        empty_write_scope = copy.deepcopy(task)
+        empty_write_scope["write_scope"] = []
+        errors = contract_tool.validate_record(empty_write_scope, "task_spec")
+        self.assertTrue(
+            any("changed_paths are not covered by write_scope" in error for error in errors)
+        )
 
     def test_model_request_semantics_fail_closed(self) -> None:
         request = self.model_request()
@@ -1362,6 +1915,18 @@ class ContractToolTests(unittest.TestCase):
         result = self.role_result()
         result["model_profile"] = {"selection_outcome": "honored"}
         self.assertTrue(contract_tool.validate_record(result, "role_result"))
+
+        missing_profile = self.role_result()
+        del missing_profile["model_profile"]
+        self.assertTrue(
+            contract_tool.validate_record(missing_profile, "role_result")
+        )
+
+        partial_profile = self.role_result()
+        partial_profile["model_profile"] = {"model": "planner-model"}
+        self.assertTrue(
+            contract_tool.validate_record(partial_profile, "role_result")
+        )
 
     def test_task_model_request_matches_role_and_mode(self) -> None:
         task = copy.deepcopy(self.golden_records()["task_spec"])
@@ -1463,7 +2028,6 @@ class ContractToolTests(unittest.TestCase):
 
         missing = copy.deepcopy(review_round)
         missing["review_result"].pop("model_profile")
-        rebind(missing)
         self.assertTrue(contract_tool.validate_record(missing, "review_round"))
 
         independent = copy.deepcopy(self.acceptance_evidence()["review_rounds"][0])

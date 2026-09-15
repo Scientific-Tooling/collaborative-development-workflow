@@ -1,0 +1,25 @@
+{
+  "version": "skill-behavior-case-v1",
+  "id": "doctor-pretty",
+  "prompt": "Use $collaborative-development-workflow from {SKILL_PATH} to add a --pretty option to scripts/doctor.py. Keep the default compact JSON output unchanged. With --pretty, print equivalent JSON using two-space indentation. Add focused tests and a short README example. Do not commit. Complete the Skill's independent review and report its formal acceptance status.",
+  "allowed_changed_paths": [
+    "README.md",
+    "scripts/doctor.py",
+    "tests/test_doctor.py"
+  ],
+  "required_changed_paths": [
+    "README.md",
+    "scripts/doctor.py",
+    "tests/test_doctor.py"
+  ],
+  "validation_commands": [
+    ["python3", "-m", "unittest", "tests.test_doctor", "-v"],
+    [
+      "python3",
+      "-c",
+      "import json, pathlib, subprocess, sys; base = [sys.executable, 'scripts/doctor.py', '--root', '.']; compact = subprocess.run(base, capture_output=True, text=True); pretty = subprocess.run(base + ['--pretty'], capture_output=True, text=True); assert compact.returncode == 0 and pretty.returncode == 0; assert compact.stderr == pretty.stderr == ''; assert json.loads(compact.stdout) == json.loads(pretty.stdout); assert compact.stdout.count('\\n') == 1; assert '\\n  \"' in pretty.stdout and pretty.stdout.count('\\n') > 2; assert '--pretty' in pathlib.Path('README.md').read_text(encoding='utf-8')"
+    ]
+  ],
+  "required_output_lines": ["ACCEPTED_PORTABLE"],
+  "timeout_seconds": 1200
+}

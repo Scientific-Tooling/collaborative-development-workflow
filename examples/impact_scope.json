@@ -2,8 +2,11 @@
   "version": "impact-scope-v2",
   "changed_paths": ["scripts/contract_tool.py"],
   "review_paths": [
+    "SKILL.md",
     "references/contracts-v2.json",
+    "references/task-contracts.md",
     "scripts/contract_tool.py",
+    "scripts/snapshot_tool.py",
     "tests/test_contract_tool.py"
   ],
   "direct_callers": ["scripts/snapshot_tool.py"],

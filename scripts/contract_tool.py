@@ -83,6 +83,7 @@ def _require_descriptor_file_support() -> None:
         or os.open not in supports_dir_fd
         or not hasattr(os, "O_NOFOLLOW")
         or not hasattr(os, "O_DIRECTORY")
+        or not hasattr(os, "O_NONBLOCK")
     ):
         raise ContractError("safe input loading requires POSIX descriptor-relative file support")
 
@@ -93,7 +94,7 @@ def _read_file_bytes(path: str) -> bytes:
     if not absolute.is_absolute() or len(absolute.parts) < 2:
         raise ContractError("input path must be a non-root absolute path")
     _require_descriptor_file_support()
-    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK
     directory_descriptor = os.open(os.path.sep, directory_flags)
     try:
         for component in absolute.parts[1:-1]:
@@ -101,7 +102,9 @@ def _read_file_bytes(path: str) -> bytes:
             os.close(directory_descriptor)
             directory_descriptor = next_descriptor
         file_descriptor = os.open(
-            absolute.parts[-1], os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory_descriptor
+            absolute.parts[-1],
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+            dir_fd=directory_descriptor,
         )
         try:
             before = os.fstat(file_descriptor)
@@ -250,6 +253,8 @@ def _validate_field_spec(root: dict[str, Any], spec: Any, field: str) -> None:
         "values",
         "max_bytes",
         "max_bytes_ref",
+        "max_value",
+        "max_value_ref",
         "max_items",
         "min_items",
         "set_like",
@@ -264,6 +269,10 @@ def _validate_field_spec(root: dict[str, Any], spec: Any, field: str) -> None:
         target = _contract_ref(root, spec["max_bytes_ref"], field=f"{field}.max_bytes_ref")
         if isinstance(target, bool) or not isinstance(target, int) or target < 0:
             raise ContractError(f"{field}.max_bytes_ref must resolve to a non-negative integer")
+    if "max_value_ref" in spec:
+        target = _contract_ref(root, spec["max_value_ref"], field=f"{field}.max_value_ref")
+        if isinstance(target, bool) or not isinstance(target, int) or target < 1:
+            raise ContractError(f"{field}.max_value_ref must resolve to a positive integer")
     if "ref" in spec:
         target = _contract_ref(root, spec["ref"], field=f"{field}.ref")
         if not isinstance(target, list):
@@ -284,6 +293,14 @@ def _validate_field_spec(root: dict[str, Any], spec: Any, field: str) -> None:
         minimum = spec["min_items"]
         if isinstance(minimum, bool) or not isinstance(minimum, int) or minimum < 0:
             raise ContractError(f"{field}.min_items must be a non-negative integer")
+    if "max_value" in spec:
+        maximum = spec["max_value"]
+        if isinstance(maximum, bool) or not isinstance(maximum, int) or maximum < 1:
+            raise ContractError(f"{field}.max_value must be a positive integer")
+    if "max_value" in spec and "max_value_ref" in spec:
+        raise ContractError(f"{field} cannot declare both max_value and max_value_ref")
+    if ("max_value" in spec or "max_value_ref" in spec) and kind != "positive_integer":
+        raise ContractError(f"{field} integer maxima require type=positive_integer")
 
 
 def _validate_declared_schema(root: dict[str, Any], schema: Any, field: str, *, allow_mixins: bool) -> None:
@@ -439,6 +456,75 @@ def _validate_contract_references(root: dict[str, Any]) -> None:
         raise ContractError(f"contract has unknown top-level key(s): {', '.join(unknown)}")
     if root.get("contract") != "collaborative-development-workflow":
         raise ContractError("contract.contract has an unexpected value")
+    canonicalization = root.get("canonicalization")
+    expected_canonicalization_keys = {
+        "domains",
+        "encoding",
+        "explicit_path_reference_scheme",
+        "hash_algorithm",
+        "json",
+        "paths",
+        "semantic_reference_schemes",
+    }
+    if (
+        not isinstance(canonicalization, dict)
+        or set(canonicalization) != expected_canonicalization_keys
+    ):
+        raise ContractError("contract.canonicalization has an invalid closed shape")
+    if canonicalization["encoding"] != "UTF-8":
+        raise ContractError("contract.canonicalization.encoding must be UTF-8")
+    if canonicalization["hash_algorithm"] != "SHA-256":
+        raise ContractError(
+            "contract.canonicalization.hash_algorithm must be SHA-256"
+        )
+    for name in ("json", "paths"):
+        if not isinstance(canonicalization[name], str) or not canonicalization[
+            name
+        ]:
+            raise ContractError(
+                f"contract.canonicalization.{name} must be non-empty text"
+            )
+    schemes = canonicalization["semantic_reference_schemes"]
+    if (
+        not isinstance(schemes, list)
+        or any(
+            not isinstance(scheme, str)
+            or not re.fullmatch(r"[a-z][a-z0-9_-]*", scheme)
+            for scheme in schemes
+        )
+        or len(schemes) != len(set(schemes))
+    ):
+        raise ContractError(
+            "contract.canonicalization.semantic_reference_schemes must be a "
+            "unique lowercase token list"
+        )
+    path_scheme = canonicalization["explicit_path_reference_scheme"]
+    if (
+        not isinstance(path_scheme, str)
+        or not re.fullmatch(r"[a-z][a-z0-9_-]*", path_scheme)
+        or path_scheme in schemes
+    ):
+        raise ContractError(
+            "contract.canonicalization.explicit_path_reference_scheme must be "
+            "a distinct lowercase token"
+        )
+    domains = canonicalization["domains"]
+    expected_domains = {
+        "record",
+        "snapshot_content",
+        "snapshot_entry",
+        "snapshot_manifest",
+    }
+    if (
+        not isinstance(domains, dict)
+        or set(domains) != expected_domains
+        or any(
+            not isinstance(value, str) or not value or not value.endswith("\0")
+            for value in domains.values()
+        )
+        or len(set(domains.values())) != len(domains)
+    ):
+        raise ContractError("contract.canonicalization.domains is invalid")
     if not isinstance(root.get("sentinels"), list) or len(root["sentinels"]) != len(set(root["sentinels"])):
         raise ContractError("contract.sentinels must be a unique list")
     if not isinstance(root.get("limits"), dict):
@@ -493,6 +579,7 @@ def _validate_contract_references(root: dict[str, Any]) -> None:
     limits = manifest["limits"]
     expected_limit_keys = {
         "max_entries",
+        "scope_paths_ref",
         "snapshot_depth_ref",
         "symlink_target_bytes_ref",
         "manifest_bytes_ref",
@@ -509,6 +596,7 @@ def _validate_contract_references(root: dict[str, Any]) -> None:
     if isinstance(max_entries["multiplier"], bool) or not isinstance(max_entries["multiplier"], int) or max_entries["multiplier"] < 1:
         raise ContractError("artifact manifest max_entries.multiplier must be positive")
     for name in (
+        "scope_paths_ref",
         "snapshot_depth_ref",
         "symlink_target_bytes_ref",
         "manifest_bytes_ref",
@@ -568,6 +656,12 @@ STRICT_ADDITIONAL_CAPABILITIES = tuple(CONTRACT["modes"]["required_capabilities"
 STRICT_CAPABILITIES = PORTABLE_CAPABILITIES + STRICT_ADDITIONAL_CAPABILITIES
 ALL_CAPABILITIES = STRICT_CAPABILITIES
 RUNTIME_EVENT_KINDS = dict(CONTRACT["runtime_events"]["record_kinds"])
+SEMANTIC_REFERENCE_SCHEMES = frozenset(
+    CONTRACT["canonicalization"]["semantic_reference_schemes"]
+)
+EXPLICIT_PATH_REFERENCE_SCHEME = CONTRACT["canonicalization"][
+    "explicit_path_reference_scheme"
+]
 
 
 def canonical_json(value: Any) -> bytes:
@@ -615,6 +709,19 @@ def normalize_repo_path(value: str) -> str:
 
 def normalize_scope_reference(value: str) -> str:
     """Normalize a reference when its shape is a repository path."""
+    explicit_path_prefix = f"{EXPLICIT_PATH_REFERENCE_SCHEME}:"
+    if isinstance(value, str) and value.startswith(explicit_path_prefix):
+        value = _text(
+            value,
+            max_bytes=(
+                CONTRACT["limits"]["path_bytes"]
+                + _byte_length(explicit_path_prefix)
+            ),
+            field="scope reference",
+        )
+        return explicit_path_prefix + normalize_repo_path(
+            value[len(explicit_path_prefix) :]
+        )
     value = _text(
         value,
         max_bytes=CONTRACT["limits"]["path_bytes"],
@@ -630,6 +737,23 @@ def normalize_scope_reference(value: str) -> str:
     if "/" in candidate and "://" not in candidate:
         return normalize_repo_path(candidate)
     return value
+
+
+def _scope_reference_repo_path(value: str) -> str | None:
+    """Return the repository path represented by a scope reference, if any."""
+    normalized = normalize_scope_reference(value)
+    explicit_path_prefix = f"{EXPLICIT_PATH_REFERENCE_SCHEME}:"
+    if normalized.startswith(explicit_path_prefix):
+        return normalized[len(explicit_path_prefix) :]
+    if "://" in normalized:
+        return None
+    scheme = normalized.partition(":")[0]
+    if scheme in SEMANTIC_REFERENCE_SCHEMES:
+        return None
+    file_location = re.fullmatch(r"(.+?):L?\d+(?::\d+)?", normalized)
+    if file_location is not None:
+        return normalize_repo_path(file_location.group(1))
+    return normalize_repo_path(normalized)
 
 
 def _text(value: Any, *, max_bytes: int, field: str, allow_empty: bool = False) -> str:
@@ -765,6 +889,8 @@ def _reference_list(value: Any, *, max_items: int, field: str) -> None:
 def _validate_object(value: Any, spec: dict[str, Any], field: str, errors: list[str]) -> None:
     if not isinstance(value, dict):
         raise ContractError(f"{field} must be an object")
+    if any(not isinstance(key, str) for key in value):
+        raise ContractError(f"{field} has a non-string field name")
     fields = spec.get("fields", {})
     required = set(spec.get("required", []))
     unknown = sorted(set(value) - set(fields))
@@ -818,6 +944,16 @@ def _validate_value(value: Any, spec: dict[str, Any], field: str, errors: list[s
     elif kind == "positive_integer":
         if isinstance(value, bool) or not isinstance(value, int) or value < 1:
             raise ContractError(f"{field} must be a positive integer")
+        if "max_value" in spec:
+            maximum = spec["max_value"]
+        elif "max_value_ref" in spec:
+            maximum = _contract_ref(
+                CONTRACT, spec["max_value_ref"], field=f"{field}.max_value_ref"
+            )
+        else:
+            maximum = None
+        if maximum is not None and value > maximum:
+            raise ContractError(f"{field} must not exceed {maximum}")
     elif kind == "enum":
         if value not in spec.get("values", []):
             raise ContractError(f"{field} is not one of the permitted values")
@@ -859,6 +995,8 @@ def _validate_value(value: Any, spec: dict[str, Any], field: str, errors: list[s
     elif kind == "capability_map":
         if not isinstance(value, dict):
             raise ContractError(f"{field} must be an object")
+        if any(not isinstance(key, str) for key in value):
+            raise ContractError(f"{field} has a non-string capability name")
         unknown = sorted(set(value) - set(ALL_CAPABILITIES))
         if unknown:
             raise ContractError(f"{field} has unknown capability keys: {','.join(unknown)}")
@@ -1221,6 +1359,18 @@ def _path_scope_contains(scope: str, path: str) -> bool:
     )
 
 
+def _reference_path_scopes_overlap(reference: str, path: str) -> bool:
+    """Return whether a path-shaped scope reference overlaps a repository path."""
+    reference_path = _scope_reference_repo_path(reference)
+    return reference_path is not None and _path_scopes_overlap(reference_path, path)
+
+
+def _reference_path_scope_contains(reference: str, path: str) -> bool:
+    """Return whether a path-shaped scope reference contains a repository path."""
+    reference_path = _scope_reference_repo_path(reference)
+    return reference_path is not None and _path_scope_contains(reference_path, path)
+
+
 def _acceptance_definitions(task: dict[str, Any]) -> dict[str, str]:
     return {
         criterion["criterion_id"]: criterion["summary"]
@@ -1245,13 +1395,38 @@ def validate_record(record: Any, kind: str) -> list[str]:
     spec = CONTRACT["records"][kind]
     try:
         _validate_object(record, spec, "record", errors)
+        if errors:
+            return sorted(set(errors))
         if kind == "impact_scope":
             changed = {normalize_repo_path(item) for item in record["changed_paths"]}
             review = {normalize_repo_path(item) for item in record["review_paths"]}
-            excluded = {normalize_scope_reference(item) for item in record["explicit_exclusions"]}
+            excluded = {
+                path
+                for item in record["explicit_exclusions"]
+                if (path := _scope_reference_repo_path(item)) is not None
+            }
             uncovered = sorted(path for path in changed if not _scope_contains(review, path))
             if uncovered:
                 raise ContractError(f"changed_paths are not covered by review_paths: {', '.join(uncovered)}")
+            named_paths = {
+                field: sorted(
+                    path
+                    for item in record[field]
+                    if (path := _scope_reference_repo_path(item)) is not None
+                )
+                for field in (
+                    "direct_callers",
+                    "direct_consumers",
+                    "mapped_tests_or_configuration",
+                )
+            }
+            for field, paths in named_paths.items():
+                uncovered = [path for path in paths if not _scope_contains(review, path)]
+                if uncovered:
+                    raise ContractError(
+                        f"{field} paths are not covered by review_paths: "
+                        + ", ".join(uncovered)
+                    )
             overlap = next(
                 (
                     (review_path, excluded_path)
@@ -1279,6 +1454,35 @@ def validate_record(record: Any, kind: str) -> list[str]:
                 )
             if record["role"] != "implementer" and record["write_scope"]:
                 raise ContractError("non-implementer TaskSpec write_scope must be empty")
+            if record["role"] == "implementer":
+                write_scope = {
+                    normalize_repo_path(path) for path in record["write_scope"]
+                }
+                review_scope = {
+                    normalize_repo_path(path)
+                    for path in record["impact_scope"]["review_paths"]
+                }
+                uncovered_write_scope = sorted(
+                    path
+                    for path in write_scope
+                    if not _scope_contains(review_scope, path)
+                )
+                if uncovered_write_scope:
+                    raise ContractError(
+                        "implementer write_scope is not covered by "
+                        "impact_scope.review_paths: "
+                        + ", ".join(uncovered_write_scope)
+                    )
+                uncovered_changes = sorted(
+                    path
+                    for path in record["impact_scope"]["changed_paths"]
+                    if not _scope_contains(write_scope, path)
+                )
+                if uncovered_changes:
+                    raise ContractError(
+                        "implementer changed_paths are not covered by write_scope: "
+                        + ", ".join(uncovered_changes)
+                    )
             if record["mode"] == "portable":
                 if record["binding_mode"] != "transport_bound_provisional":
                     raise ContractError("portable TaskSpec requires transport_bound_provisional binding")
@@ -1341,12 +1545,21 @@ def validate_record(record: Any, kind: str) -> list[str]:
             actual_missing = sorted(record["missing"])
             if actual_missing != expected_missing:
                 raise ContractError("missing must exactly list false required capabilities")
+            read_only_verified = record["read_only_enforcement"] != "unverified"
             if mode == "portable":
-                expected_result = "PORTABLE_READY" if not expected_missing else "NOT_READY"
+                expected_result = (
+                    "PORTABLE_READY"
+                    if not expected_missing and read_only_verified
+                    else "NOT_READY"
+                )
             elif record["authority"] != "authoritative_runtime_record":
                 expected_result = "NOT_READY"
             else:
-                expected_result = "STRICT_READY" if not expected_missing else "NOT_READY"
+                expected_result = (
+                    "STRICT_READY"
+                    if not expected_missing and read_only_verified
+                    else "NOT_READY"
+                )
             if record["result"] != expected_result:
                 raise ContractError(f"result must be {expected_result} for this mode and capability map")
             if mode == "strict" and record["result"] == "STRICT_READY" and record["authority"] != "authoritative_runtime_record":
@@ -1356,6 +1569,15 @@ def validate_record(record: Any, kind: str) -> list[str]:
         elif kind == "role_result":
             role = record["role"]
             status = record["status"]
+            if set(record["model_profile"]) != {
+                "model",
+                "effort",
+                "selection_outcome",
+            }:
+                raise ContractError(
+                    "role_result model_profile requires model, effort, and "
+                    "selection_outcome"
+                )
             allowed = set(CONTRACT["statuses"]["common_exceptional"])
             if role == "reviewer":
                 allowed.update(CONTRACT["statuses"]["review"])
@@ -1437,20 +1659,50 @@ def validate_record(record: Any, kind: str) -> list[str]:
                 )
             if outcome == "NOT_ACCEPTED" and record["accepted"] is not False:
                 raise ContractError("NOT_ACCEPTED requires accepted=false")
+            validation_status = record["validation_status"]
+            validation_checks = record["validation_checks"]
+            validation_check_ids = {check["id"] for check in validation_checks}
+            full_validation_check_id = record["full_validation_check_id"]
+            if validation_status == "PASSED":
+                if not validation_checks or any(
+                    check["status"] != "PASSED" for check in validation_checks
+                ):
+                    raise ContractError(
+                        "PASSED validation requires nonempty all-PASSED validation_checks"
+                    )
+                if full_validation_check_id not in validation_check_ids:
+                    raise ContractError(
+                        "full_validation_check_id must identify a validation check"
+                    )
+            elif validation_status == "FAILED":
+                if not validation_checks or not any(
+                    check["status"] == "FAILED" for check in validation_checks
+                ):
+                    raise ContractError(
+                        "FAILED validation requires at least one failed validation check"
+                    )
+                if full_validation_check_id not in validation_check_ids:
+                    raise ContractError(
+                        "full_validation_check_id must identify a validation check"
+                    )
+            else:
+                if any(
+                    check["status"] in {"PASSED", "FAILED"}
+                    for check in validation_checks
+                ):
+                    raise ContractError(
+                        "NOT_RUN validation cannot contain passed or failed checks"
+                    )
+                if full_validation_check_id is not None:
+                    raise ContractError(
+                        "NOT_RUN validation requires full_validation_check_id=null"
+                    )
             if record["accepted"]:
                 for field in (
                     "snapshot_id", "content_identity", "capability_preflight_digest",
                     "final_review_round_digest", "full_validation_check_id",
                 ):
                     _require_real_identifier(record, field)
-                if not record["validation_checks"] or any(
-                    check["status"] != "PASSED" for check in record["validation_checks"]
-                ):
-                    raise ContractError("accepted outcomes require nonempty passed validation_checks")
-                if record["full_validation_check_id"] not in {
-                    check["id"] for check in record["validation_checks"]
-                }:
-                    raise ContractError("full_validation_check_id must identify a validation check")
             if outcome == "NOT_ACCEPTED" and record["reason"] is None:
                 raise ContractError("NOT_ACCEPTED requires a reason")
             if outcome != "NOT_ACCEPTED" and record["reason"] is not None:
@@ -1546,7 +1798,7 @@ def validate_record(record: Any, kind: str) -> list[str]:
             review_paths = task["impact_scope"]["review_paths"]
             for check in required_checks:
                 if not any(
-                    _path_scopes_overlap(covered, review_path)
+                    _reference_path_scopes_overlap(covered, review_path)
                     for covered in check["covered_scope"]
                     for review_path in review_paths
                 ):
@@ -1557,7 +1809,7 @@ def validate_record(record: Any, kind: str) -> list[str]:
                 changed_path
                 for changed_path in task["impact_scope"]["changed_paths"]
                 if not any(
-                    _path_scope_contains(covered, changed_path)
+                    _reference_path_scope_contains(covered, changed_path)
                     for check in required_checks
                     for covered in check["covered_scope"]
                 )
@@ -1606,6 +1858,10 @@ def validate_record(record: Any, kind: str) -> list[str]:
                 coverage = current["review_coverage_proof"]
                 if current["task_spec"]["mode"] != preflight["mode"]:
                     raise ContractError("review round mode does not match capability preflight")
+                if current["task_spec"]["run_id"] != preflight["run_id"]:
+                    raise ContractError(
+                        "review round run_id does not match capability preflight"
+                    )
                 if index == 0:
                     if coverage["prior_reviewer_result_digest"] is not None or coverage["addressed_finding_ids"]:
                         raise ContractError("the first review round cannot reference prior findings")
@@ -1647,13 +1903,47 @@ def validate_record(record: Any, kind: str) -> list[str]:
                     raise ContractError("a findings fix requires a new snapshot and content identity")
             if outcome["mode"] != preflight["mode"]:
                 raise ContractError("workflow outcome mode does not match capability preflight")
+            final_round = rounds[-1]
+            final_result = final_round["review_result"]
+            review_status = outcome["review_status"]
+            final_status = final_result["status"]
+            if review_status == "REVIEW_UNAVAILABLE":
+                raise ContractError(
+                    "acceptance evidence with a review round cannot report REVIEW_UNAVAILABLE"
+                )
+            if review_status == "CLEAN" and final_status != "CLEAN":
+                raise ContractError("CLEAN review disposition requires a final CLEAN result")
+            if review_status == "FINDINGS" and final_status != "FINDINGS":
+                raise ContractError(
+                    "FINDINGS review disposition requires a final FINDINGS result"
+                )
+            if (
+                final_status not in {"CLEAN", "FINDINGS"}
+                and review_status != "REVIEW_BLOCKED"
+            ):
+                raise ContractError(
+                    "a final exceptional reviewer result requires REVIEW_BLOCKED disposition"
+                )
+            if outcome["capability_preflight_digest"] != digest_record(
+                preflight, "capability_preflight"
+            ):
+                raise ContractError("capability_preflight_digest does not match preflight")
+            if outcome["final_review_round_digest"] != digest_record(
+                final_round, "review_round"
+            ):
+                raise ContractError("final_review_round_digest does not match final review round")
+            if (
+                outcome["snapshot_id"] != final_result["snapshot_id"]
+                or outcome["content_identity"] != final_result["content_identity"]
+            ):
+                raise ContractError(
+                    "workflow outcome is not bound to the final reviewed snapshot"
+                )
             if outcome["accepted"]:
                 if outcome["mode"] == "strict":
                     raise ContractError("bundled tooling cannot attest ACCEPTED_STRICT")
                 if preflight["result"] != "PORTABLE_READY":
                     raise ContractError("portable acceptance requires PORTABLE_READY preflight")
-                final_round = rounds[-1]
-                final_result = final_round["review_result"]
                 final_artifact = final_round["artifact_access_proof"]
                 final_coverage = final_round["review_coverage_proof"]
                 if any(
@@ -1667,12 +1957,6 @@ def validate_record(record: Any, kind: str) -> list[str]:
                     raise ContractError("accepted evidence requires complete final review coverage")
                 if final_artifact["artifact_verification_status"] != "PASSED" or final_artifact["workspace_compare_status"] != "PASSED":
                     raise ContractError("accepted evidence requires passed artifact verification and workspace comparison")
-                if outcome["capability_preflight_digest"] != digest_record(preflight, "capability_preflight"):
-                    raise ContractError("capability_preflight_digest does not match preflight")
-                if outcome["final_review_round_digest"] != digest_record(final_round, "review_round"):
-                    raise ContractError("final_review_round_digest does not match final review round")
-                if outcome["snapshot_id"] != final_result["snapshot_id"] or outcome["content_identity"] != final_result["content_identity"]:
-                    raise ContractError("workflow outcome is not bound to the final reviewed snapshot")
         elif kind == "runtime_completion_event":
             _require_runtime_identity(record)
             if record["status"] != "completed" or record["result_delivery_confirmed"] != "yes":

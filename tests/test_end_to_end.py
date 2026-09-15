@@ -10,13 +10,11 @@ import unittest
 from pathlib import Path
 
 
-sys.path.insert(0, "scripts")
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
 
 import contract_tool
 import snapshot_tool
-
-
-ROOT = Path(__file__).resolve().parents[1]
 
 
 class EndToEndEvidenceTests(unittest.TestCase):
