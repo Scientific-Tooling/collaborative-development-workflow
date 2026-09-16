@@ -69,6 +69,24 @@ class WorkflowToolTests(unittest.TestCase):
         repository = parent / "repository"
         return self.repository_template.copy_to(repository)
 
+    def test_guide_is_the_single_machine_readable_policy_source(self) -> None:
+        code, listing = workflow_tool.describe_guide(list_topics=True)
+        self.assertEqual(code, 0, listing)
+        self.assertEqual(listing["guide_version"], workflow_tool.GUIDE_VERSION)
+        self.assertEqual(set(listing["topics"]), set(workflow_tool.GUIDES))
+
+        for topic in listing["topics"]:
+            with self.subTest(topic=topic):
+                code, report = workflow_tool.describe_guide(topic)
+                self.assertEqual(code, 0, report)
+                self.assertEqual(report["topic"], topic)
+                self.assertEqual(report["guide_version"], workflow_tool.GUIDE_VERSION)
+                self.assertTrue(report["guide"])
+
+        code, report = workflow_tool.describe_guide("not-a-topic")
+        self.assertEqual(code, 2)
+        self.assertFalse(report["ok"])
+
     def reviewer_task(self) -> dict:
         evidence = contract_tool.load_json_file(
             str(ROOT / "examples" / "acceptance_evidence.json")
@@ -196,6 +214,221 @@ class WorkflowToolTests(unittest.TestCase):
         evidence_path = parent / "evidence.json"
         evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
         return repository, artifact, evidence_path, evidence
+
+    def build_observations(self, parent: Path) -> tuple[Path, Path, Path, dict]:
+        repository, artifact, _, evidence = self.build_live_evidence(parent)
+        review_round = evidence["review_rounds"][0]
+        task = copy.deepcopy(review_round["task_spec"])
+        for field in (
+            "base_snapshot",
+            "base_content_identity",
+            "snapshot_id",
+            "content_identity",
+            "artifact_path",
+            "artifact_access_proof",
+            "review_coverage_proof",
+        ):
+            task[field] = None
+        result = copy.deepcopy(review_round["review_result"])
+        for field in (
+            "version",
+            "role",
+            "mode",
+            "run_id",
+            "task_id",
+            "invocation_id",
+            "report_id",
+            "base_snapshot",
+            "base_content_identity",
+            "snapshot_id",
+            "content_identity",
+            "artifact_access_proof",
+            "review_coverage_proof",
+        ):
+            result.pop(field, None)
+        observations = {
+            "version": "workflow-observations-v2",
+            "capability_preflight": copy.deepcopy(
+                evidence["capability_preflight"]
+            ),
+            "review_rounds": [
+                {
+                    "task_spec": task,
+                    "review_result": result,
+                    "artifact_path": str(artifact),
+                }
+            ],
+            "validation_checks": [
+                {"id": "full", "status": "PASSED", "summary": "suite passed"}
+            ],
+            "full_validation_check_id": "full",
+            "commit_requested": False,
+        }
+        observations_path = parent / "observations.json"
+        observations_path.write_text(
+            json.dumps(observations), encoding="utf-8"
+        )
+        return repository, artifact, observations_path, observations
+
+    def test_generate_assembles_evidence_and_a_plain_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary)
+            repository, artifact, observations_path, _ = self.build_observations(parent)
+            evidence_path = parent / "generated-evidence.json"
+            report_path = parent / "user-report.md"
+            code, report = workflow_tool.generate_evidence(
+                str(observations_path),
+                str(repository),
+                str(evidence_path),
+                str(report_path),
+            )
+            self.assertEqual(code, 0, report)
+            generated = contract_tool.load_json_file(str(evidence_path))
+            self.assertEqual(
+                contract_tool.validate_record(generated, "acceptance_evidence"), []
+            )
+            self.assertTrue(generated["workflow_outcome"]["accepted"])
+            self.assertEqual(
+                generated["workflow_outcome"]["outcome"], "ACCEPTED_PORTABLE"
+            )
+            final_round = generated["review_rounds"][-1]
+            self.assertEqual(final_round["task_spec"]["artifact_path"], str(artifact))
+            self.assertEqual(
+                final_round["task_spec"]["artifact_access_proof"],
+                final_round["artifact_access_proof"]["proof_id"],
+            )
+            self.assertEqual(
+                final_round["task_spec"]["review_coverage_proof"],
+                final_round["review_coverage_proof"]["proof_id"],
+            )
+            self.assertTrue(report_path.exists())
+            user_report = report_path.read_text(encoding="utf-8")
+            self.assertIn("Acceptance: ready for portable acceptance.", user_report)
+            for internal_name in (
+                "run_id",
+                "snapshot_id",
+                "content_identity",
+                "acceptance-evidence digest",
+            ):
+                self.assertNotIn(internal_name, user_report)
+
+            accept_code, accept_report = workflow_tool.accept_evidence(
+                str(evidence_path),
+                str(repository),
+                generated["review_rounds"][-1]["task_spec"]["run_id"],
+            )
+            self.assertEqual(accept_code, 0, accept_report)
+
+    def test_generate_does_not_claim_acceptance_without_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary)
+            repository, _, observations_path, observations = self.build_observations(parent)
+            observations["validation_checks"] = []
+            observations.pop("full_validation_check_id")
+            observations_path.write_text(json.dumps(observations), encoding="utf-8")
+            evidence_path = parent / "generated-evidence.json"
+            report_path = parent / "user-report.md"
+            code, report = workflow_tool.generate_evidence(
+                str(observations_path),
+                str(repository),
+                str(evidence_path),
+                str(report_path),
+            )
+            self.assertEqual(code, 0, report)
+            generated = contract_tool.load_json_file(str(evidence_path))
+            outcome = generated["workflow_outcome"]
+            self.assertFalse(outcome["accepted"])
+            self.assertEqual(outcome["outcome"], "NOT_ACCEPTED")
+            self.assertEqual(outcome["validation_status"], "NOT_RUN")
+            self.assertEqual(outcome["reason"], "EVIDENCE_INVALID")
+            self.assertEqual(
+                contract_tool.validate_record(generated, "acceptance_evidence"), []
+            )
+            self.assertIn("not accepted", report["summary"])
+
+    def test_generate_binds_a_new_snapshot_for_a_findings_round(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary)
+            repository, _, observations_path, observations = self.build_observations(parent)
+            first = observations["review_rounds"][0]
+            first["review_result"].update(
+                status="FINDINGS",
+                summary="one issue found",
+                findings=[
+                    {
+                        "id": "finding-1",
+                        "severity": "MEDIUM",
+                        "path": "README.md",
+                        "line": 1,
+                        "summary": "The change needs a follow-up.",
+                        "evidence": "The first review observed the old text.",
+                        "impact": "The result is incomplete.",
+                        "fix": "Apply the follow-up change.",
+                        "status": "OPEN",
+                    }
+                ],
+            )
+            (repository / "README.md").write_text("after fixed\n", encoding="utf-8")
+            second_artifact = parent / "artifact-two"
+            snapshot_tool.create_snapshot(
+                str(repository), str(parent / "scope.json"), str(second_artifact)
+            )
+            second_task = copy.deepcopy(first["task_spec"])
+            second_task["invocation_id"] = "invocation-2"
+            second_result = copy.deepcopy(first["review_result"])
+            second_result.update(
+                status="CLEAN",
+                summary="no issues found",
+                findings=[],
+            )
+            observations["review_rounds"].append(
+                {
+                    "task_spec": second_task,
+                    "review_result": second_result,
+                    "artifact_path": str(second_artifact),
+                }
+            )
+            observations_path.write_text(json.dumps(observations), encoding="utf-8")
+            evidence_path = parent / "generated-evidence.json"
+            code, report = workflow_tool.generate_evidence(
+                str(observations_path),
+                str(repository),
+                str(evidence_path),
+                None,
+            )
+            self.assertEqual(code, 0, report)
+            generated = contract_tool.load_json_file(str(evidence_path))
+            self.assertEqual(
+                contract_tool.validate_record(generated, "acceptance_evidence"), []
+            )
+            self.assertTrue(generated["workflow_outcome"]["accepted"])
+            self.assertEqual(len(generated["review_rounds"]), 2)
+            self.assertEqual(
+                generated["review_rounds"][1]["review_coverage_proof"][
+                    "addressed_finding_ids"
+                ],
+                ["finding-1"],
+            )
+            self.assertNotEqual(
+                generated["review_rounds"][0]["task_spec"]["content_identity"],
+                generated["review_rounds"][1]["task_spec"]["content_identity"],
+            )
+
+    def test_generate_refuses_to_replace_an_existing_attachment(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary)
+            repository, _, observations_path, _ = self.build_observations(parent)
+            output = parent / "generated-evidence.json"
+            output.write_text("keep\n", encoding="utf-8")
+            code, report = workflow_tool.generate_evidence(
+                str(observations_path),
+                str(repository),
+                str(output),
+                None,
+            )
+            self.assertEqual(code, 2)
+            self.assertFalse(report["ok"])
+            self.assertEqual(output.read_text(encoding="utf-8"), "keep\n")
 
     def test_prompt_renders_a_valid_reviewer_assignment(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

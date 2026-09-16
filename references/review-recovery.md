@@ -1,60 +1,23 @@
 # Review Recovery and Revision (V2)
 
-Read this reference for portable review failure and all findings-driven revision
-rounds. Strict cancellation, lifecycle recovery, and replacement are in
-[`review-recovery-strict.md`](review-recovery-strict.md). Public statuses are
-defined only in [`contracts-v2.json`](contracts-v2.json).
+Read for portable review failure or findings-driven revision. Use the executable
+policy source:
 
-## Portable review failure
-
-Portable mode has no runtime-asserted replacement or takeover semantics. Wait through
-the selected protected Reviewer window first; an earlier wrapper timeout, empty
-response, silence, or close acknowledgement does not begin recovery. If the reviewer
-then does not produce a usable terminal result, the parent may finish its own focused
-and full validation, preserve the snapshot and diagnostics, and hand off:
-
-```text
-outcome = NOT_ACCEPTED
-reason = REVIEW_UNAVAILABLE
-commit = forbidden
+```bash
+python3 "$CDW_SKILL_DIR/scripts/workflow_tool.py" guide --topic recovery
 ```
 
-If a bounded substantive review arrives as malformed JSON, the parent may give the
-same reviewer one format-correction request. Supply the validator errors and ask it
-to restate the same result in the required shape. This does not count as another
-review round. It may not change the conclusion, add analysis, invent missing
-artifact access or coverage, change scope, or switch agents. If that one correction
-is still invalid—or if the original result has a snapshot, scope, artifact,
-identity, or coverage problem—classify it as `REVIEW_BLOCKED` and use the same
-non-accepting handoff. Empty output and a missing usable review do not qualify for
-format correction; they are `REVIEW_UNAVAILABLE`. Do not call a wrapper timeout,
-silence, or close acknowledgement a failure, success, cancellation, or stop proof.
+After the protected Reviewer window, no usable result is
+`NOT_ACCEPTED` / `REVIEW_UNAVAILABLE`; malformed substantive output gets at most
+one format-only correction from the same reviewer. Identity, scope, artifact,
+coverage, stale, or late problems are `REVIEW_BLOCKED`. Neither disposition
+authorizes retry, replacement, takeover, unlock, or commit.
 
-## Findings-driven revision
+For `FINDINGS`, keep the old evidence, fix only confirmed in-scope issues, rerun
+affected and full checks, freeze a new snapshot, and obtain fresh complete review
+coverage. Keep objective, criteria, checks, scope, and model request unchanged.
+The public contract allows at most three total rounds; a third actionable finding
+or any product/scope/policy decision pauses for user authorization.
 
-`FINDINGS` is an ordinary revision round, not a blocked-review restart and not a new
-authorization boundary. For each validated finding:
-
-1. retain the exact old report and snapshot identity;
-2. apply only a confirmed, in-scope fix;
-3. rerun the affected focused checks;
-4. rerun the prescribed full validation;
-5. confirm that the task objective, acceptance definitions, focused checks,
-   impact scope, and model request remain unchanged;
-6. freeze and verify a new snapshot with new manifest/content identities; and
-7. rerun one integrated review against every declared review path in a fresh
-   independent context. No old coverage or `CLEAN` result transfers to the new
-   identity. Review-lane aggregation is not supported by the public V2 contracts.
-
-If a finding requires a scope, objective, criterion-definition, focused-check, or
-model-request change, stop this acceptance sequence and start a newly authorized
-task/evidence bundle. Never shrink or silently rewrite the original review task to
-obtain acceptance.
-
-Permit at most three total review rounds: the initial review plus two fix/review
-rounds. If the third review still has actionable findings,
-pause and request explicit user authorization. A finding that requires a product
-decision, conflicts with user changes, or cannot be reproduced also pauses at the
-user-decision gate.
-
-The final acceptance gate remains parent-owned by [`workflow.md`](workflow.md).
+Strict stop and replacement recovery is separate in
+[`review-recovery-strict.md`](review-recovery-strict.md).

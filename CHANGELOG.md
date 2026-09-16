@@ -16,6 +16,9 @@ All notable changes to this project are documented here. The repository follows
   that unobserved live gates passed.
 - Deterministic delegated-prompt rendering from a validated TaskSpec, including
   contract-derived result fields and statuses.
+- A `workflow_tool.py guide` command that owns operational policy, role guidance,
+  budgets, recovery, and reporting so AI-facing references stay small and do not
+  duplicate executable rules.
 - A read-only custom-reviewer template, Skill metadata validation, and a manual
   Codex behavior evaluation.
 
@@ -47,6 +50,8 @@ All notable changes to this project are documented here. The repository follows
   prove live runtime readiness.
 - Skill instructions use progressive disclosure, one owner for each detailed
   rule, and size budgets that keep the default workflow concise.
+- Conditional references now route to the Python guide and the contract/snapshot
+  helpers instead of repeating schemas, prompts, budgets, and lifecycle prose.
 - Reusable Git test fixtures and event-based timeout tests reduce CI time without
   reducing the supported Python matrix or regression coverage.
 
