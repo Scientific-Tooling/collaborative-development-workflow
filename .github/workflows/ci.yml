@@ -29,13 +29,26 @@ jobs:
       - run: python -m pip install -r requirements-dev.txt
       - run: ruff check scripts tests evals/deterministic-regression-runner.py
       - run: python -m unittest discover -s tests -v
+      - name: Verify the regression sandbox
+        run: |
+          # The regression below runs with unsafe-direct isolation and depends on
+          # this namespace for its OS and network boundary, so prove the sandbox
+          # holds before relying on it instead of degrading to an unisolated run.
+          # Fail if the sandbox cannot start at all.
+          unshare --user --net --kill-child -- true
+          # Fail if the sandbox can still reach the network.
+          if unshare --user --net --kill-child -- \
+            python3 -c "import socket; socket.create_connection(('1.1.1.1', 80), timeout=5)" 2>/dev/null; then
+            echo "regression sandbox has network access; refusing to run unisolated" >&2
+            exit 1
+          fi
       - name: Run deterministic behavior regression
         run: |
           WORKSPACE_ROOT="$(mktemp -d "$RUNNER_TEMP/cdw-deterministic.XXXXXXXX")"
           trap 'rm -rf "$WORKSPACE_ROOT"' EXIT
           PYTHON="$(command -v python3)"
           PYTHON_DIR="$(dirname "$PYTHON")"
-          env -i PATH="$PYTHON_DIR:/usr/bin:/bin" unshare --user --map-root-user --net --kill-child -- "$PYTHON" scripts/behavior_eval.py \
+          env -i PATH="$PYTHON_DIR:/usr/bin:/bin" unshare --user --net --kill-child -- "$PYTHON" scripts/behavior_eval.py \
             --case evals/deterministic-regression.json \
             --source-root . \
             --skill-path . \
