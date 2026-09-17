@@ -61,7 +61,7 @@
         "isolation": "frozen-artifact",
         "budget": {
           "version": "execution-budget-v2",
-          "wall_clock_seconds": 10800,
+          "wall_clock_seconds": 18000,
           "max_turns": 128,
           "max_output_bytes": 524288
         },
@@ -159,7 +159,7 @@
     "reason": null,
     "validation_status": "PASSED",
     "capability_preflight_digest": "ac637b2566248ba244a99e31ded5b2e3514108b205535f0f52e87ae6ad40e3fd",
-    "final_review_round_digest": "7b4bed09bdd0cef0cd2d01ad1e67f21cd2d769098777806394a1e8c668471f31",
+    "final_review_round_digest": "7c08befddbc6b668fe936d29c2947caec91bf803a388ef5eb34a32ac7f089990",
     "validation_checks": [
       {"id": "full", "status": "PASSED", "summary": "suite passed"}
     ],

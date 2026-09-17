@@ -155,7 +155,7 @@ REVIEW_PROFILES: dict[str, dict[str, int]] = {
         "max_output_bytes": 262144,
     },
     "extended": {
-        "wall_clock_seconds": 10800,
+        "wall_clock_seconds": 18000,
         "max_turns": 128,
         "max_output_bytes": 524288,
     },

@@ -644,6 +644,34 @@ class SnapshotToolTests(unittest.TestCase):
                         snapshot_tool._canonical_absolute_path(output_arg).exists()
                     )
 
+    def test_compare_rejects_artifact_inside_ignored_repository_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary)
+            root = parent / "repo"
+            self.setup_repository(root)
+            (root / ".gitignore").write_text("ignored-artifact/\n", encoding="utf-8")
+            self.run_git(root, "add", ".gitignore")
+            self.run_git(root, "commit", "-qm", "ignore artifact directory")
+            scope = parent / "scope.json"
+            self.write_scope(scope)
+            artifact = parent / "artifact"
+            snapshot_tool.create_snapshot(str(root), str(scope), str(artifact))
+
+            ignored = root / "ignored-artifact"
+            ignored.mkdir()
+            # The artifact is intentionally owner-read-only, but the WSL fixture
+            # filesystem may require a writable source mode for renameat2.
+            os.chmod(artifact, 0o700)
+            moved_artifact = ignored / "artifact"
+            os.rename(artifact, moved_artifact)
+            os.chmod(moved_artifact, 0o500)
+
+            with self.assertRaisesRegex(
+                snapshot_tool.SnapshotError,
+                "review artifact must be outside the repository root",
+            ):
+                snapshot_tool.compare_workspace(str(root), str(moved_artifact), str(scope))
+
     @unittest.skipUnless(hasattr(os, "mkfifo"), "named pipes require POSIX")
     def test_untrusted_fifo_read_opens_do_not_wait_for_a_writer(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -830,9 +858,7 @@ class SnapshotToolTests(unittest.TestCase):
                     snapshot_tool.compare_workspace(
                         str(parent / "missing-root"), str(artifact), str(scope)
                     )
-            self.assertEqual(len(opened_artifacts), 1)
-            with self.assertRaises(OSError):
-                os.fstat(opened_artifacts[0])
+            self.assertEqual(opened_artifacts, [])
 
     def test_unborn_repository_and_empty_scope_are_supported(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

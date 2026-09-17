@@ -66,7 +66,7 @@ class ExampleTests(unittest.TestCase):
             task["budget"],
             {
                 "version": "execution-budget-v2",
-                "wall_clock_seconds": 10800,
+                "wall_clock_seconds": 18000,
                 "max_turns": 128,
                 "max_output_bytes": 524288,
             },

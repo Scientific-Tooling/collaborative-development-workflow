@@ -121,6 +121,10 @@ The manual behavior evaluation is an isolated GitHub Actions workflow and requir
 its own short-lived project API key and disposable runner. Its report is a smoke
 test, not formal acceptance. See [`.github/workflows/behavior-eval.yml`](.github/workflows/behavior-eval.yml).
 
+The normal CI matrix also runs `evals/deterministic-regression.json` through the
+public behavior evaluator without secrets or network access; the manual Codex
+evaluation remains the model-backed smoke test.
+
 ## Safety boundary
 
 This Skill does not replace repository instructions, tests, access controls, or

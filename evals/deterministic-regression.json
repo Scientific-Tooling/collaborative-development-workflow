@@ -1,0 +1,22 @@
+{
+  "version": "skill-behavior-case-v1",
+  "id": "deterministic-regression",
+  "prompt": "Run the deterministic local behavior regression.",
+  "allowed_changed_paths": [
+    "behavior-regression-output.txt"
+  ],
+  "required_changed_paths": [
+    "behavior-regression-output.txt"
+  ],
+  "validation_commands": [
+    [
+      "python3",
+      "-c",
+      "from pathlib import Path; assert Path('behavior-regression-output.txt').read_text(encoding='utf-8') == 'passed\\n'"
+    ]
+  ],
+  "required_output_lines": [
+    "DETERMINISTIC_BEHAVIOR_PASS"
+  ],
+  "timeout_seconds": 30
+}

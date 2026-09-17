@@ -65,6 +65,12 @@ class WorkflowToolTests(unittest.TestCase):
     def run_git(self, root: Path, *args: str) -> None:
         _run_fixture_git(root, *args)
 
+    def test_extended_reviewer_profile_uses_five_hour_budget(self) -> None:
+        self.assertEqual(
+            workflow_tool.REVIEW_PROFILES["extended"]["wall_clock_seconds"],
+            18000,
+        )
+
     def make_repository(self, parent: Path) -> Path:
         repository = parent / "repository"
         return self.repository_template.copy_to(repository)

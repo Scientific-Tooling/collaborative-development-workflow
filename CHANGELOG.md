@@ -21,6 +21,9 @@ All notable changes to this project are documented here. The repository follows
   duplicate executable rules.
 - A read-only custom-reviewer template, Skill metadata validation, and a manual
   Codex behavior evaluation.
+- A deterministic, non-secret behavior regression case exercised by the public
+  evaluator in the normal CI matrix.
+- A Ruff correctness gate for the helper and test code.
 
 ### Changed
 
@@ -54,6 +57,8 @@ All notable changes to this project are documented here. The repository follows
   helpers instead of repeating schemas, prompts, budgets, and lifecycle prose.
 - Reusable Git test fixtures and event-based timeout tests reduce CI time without
   reducing the supported Python matrix or regression coverage.
+- Development dependencies are pinned, and normal CI action revisions are pinned
+  to immutable release commits.
 
 ### Fixed
 
@@ -65,6 +70,8 @@ All notable changes to this project are documented here. The repository follows
 - Metadata validation rejects unknown OpenAI metadata keys while accepting the
   documented optional interface and tool dependency fields.
 - Boolean snapshot sizes are rejected as invalid integers.
+- Direct workspace comparison rejects review artifacts located inside the
+  repository, including ignored directories.
 - File-location references now map to their repository paths without letting a
   similarly spelled semantic reference satisfy path coverage. An explicit `file:`
   escape keeps colon-containing repository paths representable.
@@ -87,6 +94,8 @@ All notable changes to this project are documented here. The repository follows
   runner writes into the shared workspace. The report and documentation now state
   that model-controlled runner commands can access the key. Reports are published
   outside the workspace with safeguards that prevent overwriting an existing file.
+- The deterministic CI regression runs with an empty environment and an isolated
+  user/network namespace, without requiring a secret-bearing runner.
 - Evaluator Git calls use a trusted system path and disable repository-controlled
   hooks, file-system monitors, and the untracked cache before inspecting runner
   changes.
@@ -111,9 +120,9 @@ All notable changes to this project are documented here. The repository follows
 - These unreleased ContractV2 changes are not compatible with 2.0.0 TaskSpec,
   preflight, acceptance, or digest values. Regenerate those records with the
   updated helpers instead of adding guessed fields to old evidence.
-- Reviewer execution now defaults to an Extended protected window of 10800 seconds,
-  128 turns, and 524288 output bytes; the parent uses one foreground wait and does
-  not automatically interrupt a live Reviewer before its deadline.
+- Reviewer execution now defaults to an Extended protected window of 18000 seconds
+  (5 hours), 128 turns, and 524288 output bytes; the parent uses one foreground
+  wait and does not automatically interrupt a live Reviewer before its deadline.
 - Portable and strict review references now share the same budget and
   non-interruption policy, while strict replacement remains available only after
   authoritative stop confirmation and sufficient remaining budget.

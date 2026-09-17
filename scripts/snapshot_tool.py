@@ -1634,6 +1634,9 @@ def compare_workspace(
 ) -> tuple[int, dict[str, Any]]:
     _reject_path_argument_traversal(artifact_arg, label="artifact path")
     artifact = _canonical_absolute_path(artifact_arg)
+    root = _real_directory(root_arg, label="repository root")
+    if _path_is_at_or_below(root, artifact):
+        raise SnapshotError("review artifact must be outside the repository root")
     if expected_content_identity is not None:
         _ensure_hash(expected_content_identity, "expected_content_identity")
     if expected_manifest_identity is not None:
@@ -1642,7 +1645,6 @@ def compare_workspace(
     artifact_descriptor = _open_absolute_directory(artifact)
     root_descriptor = -1
     try:
-        root = _real_directory(root_arg, label="repository root")
         root_descriptor = _open_root_fd(root)
         manifest = _verify_artifact_descriptor(
             artifact_descriptor,
