@@ -24,6 +24,8 @@ All notable changes to this project are documented here. The repository follows
 - A deterministic, non-secret behavior regression case exercised by the public
   evaluator in the normal CI matrix.
 - A Ruff correctness gate for the helper and test code.
+- Context-budget guidance for bounded tool output, milestone compaction, status
+  checks, and isolated side work.
 
 ### Changed
 

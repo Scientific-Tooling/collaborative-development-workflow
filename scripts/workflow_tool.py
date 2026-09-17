@@ -215,7 +215,9 @@ GUIDES: dict[str, dict[str, Any]] = {
             "ownership": "One writer per mutable workspace. The main agent owns scope, integration, full validation, acceptance, and permissions.",
         },
         "sequence": [
-            "Plan and implement within the frozen scope; run focused and full validation.",
+            "Plan and implement within the frozen scope; keep verbose command output in files and inspect bounded excerpts instead of pasting complete diffs or logs.",
+            "At each parent-owned completed checkpoint, inspect /status and use /compact when context is high when available; never compact during a protected Reviewer wait.",
+            "Use a side task, fresh subagent, or new task for unrelated work rather than extending the main thread with another branch.",
             "Choose the Reviewer budget before freezing; create and verify one exact snapshot outside the repository.",
             "Pause writers; start one fresh enforced-read-only Reviewer and wait once in the foreground for the full protected window.",
             "For findings, fix only confirmed in-scope issues, rerun checks, create a new snapshot, and obtain complete fresh coverage.",
@@ -344,6 +346,8 @@ GUIDES: dict[str, dict[str, Any]] = {
         },
         "rules": [
             "Stop at a parent-owned completed checkpoint, never during a protected foreground wait.",
+            "At a completed checkpoint, inspect /status and use /compact when context is high when available; never use /compact during a protected Reviewer wait.",
+            "Keep verbose command output on disk and read bounded excerpts; use a side task, fresh subagent, or new task for unrelated work.",
             "Keep handoffs bounded metadata only: no raw conversation, source, prompts, secrets, embeddings, or transcript.",
             "Validate digest, record shape, Git baseline, scope, checkpoint, content identity, and runtime state before resuming. A handoff never proves review, acceptance, or commit authority.",
         ],

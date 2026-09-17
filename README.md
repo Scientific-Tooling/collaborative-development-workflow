@@ -75,6 +75,20 @@ in the evidence attachment, not the user report. Acceptance still requires the
 parent's live sandbox, invocation, freshness, immutability, criteria, and status
 checks. `REVIEW_UNAVAILABLE` and `REVIEW_BLOCKED` are not acceptance.
 
+## Context budget
+
+For Codex CLI, add this top-level setting to `~/.codex/config.toml` to cap the
+amount of each tool/function output stored in history:
+
+```toml
+tool_output_token_limit = 8000
+```
+
+Keep large logs on disk and inspect targeted excerpts. At each completed milestone,
+use `/status` and then `/compact` when the context is high; use a side task or
+fresh subagent for unrelated work. Do not compact during a protected Reviewer
+wait. This limit controls individual tool output, not the whole context window.
+
 ## Files and tools
 
 | Purpose | Authority |

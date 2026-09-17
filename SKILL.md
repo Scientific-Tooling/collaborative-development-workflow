@@ -67,10 +67,14 @@ Always read [`workflow.md`](references/workflow.md) first.
 
 1. Restate the outcome, inspect guidance/consumers, record Git state, define typed
    scope/checks, run preflight, and resolve delegation models.
-2. Plan and implement with one writer; run focused and full validation.
-3. Choose the Reviewer budget, freeze and verify the exact snapshot, pause writers,
+2. Plan and implement with one writer; keep noisy command output in files and
+   inspect bounded excerpts instead of pasting complete diffs or logs.
+3. At each parent-owned completed checkpoint, inspect `/status` and use `/compact`
+   when context is high (when available); never compact during a protected
+   Reviewer wait. Use a side task or fresh subagent for unrelated work.
+4. Choose the Reviewer budget, freeze and verify the exact snapshot, pause writers,
    and wait once for one fresh independent review.
-4. For findings, fix only confirmed in-scope issues and repeat validation, snapshot,
+5. For findings, fix only confirmed in-scope issues and repeat validation, snapshot,
    and complete review coverage. Accept only after evidence and live checks.
 
 At a safe checkpoint, use [`context-rollover.md`](references/context-rollover.md).

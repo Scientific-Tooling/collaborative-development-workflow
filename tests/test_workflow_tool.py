@@ -93,6 +93,16 @@ class WorkflowToolTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertFalse(report["ok"])
 
+    def test_guides_include_context_budget_safeguards(self) -> None:
+        for topic in ("workflow", "rollover"):
+            with self.subTest(topic=topic):
+                code, report = workflow_tool.describe_guide(topic)
+                self.assertEqual(code, 0, report)
+                guidance = json.dumps(report["guide"], ensure_ascii=False)
+                self.assertIn("/status", guidance)
+                self.assertIn("/compact", guidance)
+                self.assertIn("bounded excerpts", guidance)
+
     def reviewer_task(self) -> dict:
         evidence = contract_tool.load_json_file(
             str(ROOT / "examples" / "acceptance_evidence.json")
