@@ -57,6 +57,12 @@ All notable changes to this project are documented here. The repository follows
   rule, and size budgets that keep the default workflow concise.
 - Conditional references now route to the Python guide and the contract/snapshot
   helpers instead of repeating schemas, prompts, budgets, and lifecycle prose.
+- Portable review guidance now separates source/review snapshots from dependency
+  runtimes: manifests and relevant lock/config files may be reviewed, while
+  generated dependency trees stay outside the artifact and Reviewer execution is
+  not claimed without an explicitly supplied runtime.
+- Workflow guidance now batches related edits and keeps progress reporting at
+  milestone level to reduce host-generated file-change noise where possible.
 - Reusable Git test fixtures and event-based timeout tests reduce CI time without
   reducing the supported Python matrix or regression coverage.
 - Development dependencies are pinned, and normal CI action revisions are pinned

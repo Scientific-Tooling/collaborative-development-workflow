@@ -103,6 +103,22 @@ class WorkflowToolTests(unittest.TestCase):
                 self.assertIn("/compact", guidance)
                 self.assertIn("bounded excerpts", guidance)
 
+    def test_workflow_guide_batches_edits_and_limits_host_noise(self) -> None:
+        code, report = workflow_tool.describe_guide("workflow")
+        self.assertEqual(code, 0, report)
+        guidance = json.dumps(report["guide"], ensure_ascii=False)
+        self.assertIn("one patch per checkpoint", guidance)
+        self.assertIn("cannot suppress TUI events", guidance)
+
+    def test_review_guide_separates_manifests_from_dependency_runtime(self) -> None:
+        code, report = workflow_tool.describe_guide("review")
+        self.assertEqual(code, 0, report)
+        guidance = json.dumps(report["guide"], ensure_ascii=False)
+        self.assertIn("package.json", guidance)
+        self.assertIn("node_modules", guidance)
+        self.assertIn("exact dependency runtime", guidance)
+        self.assertIn("fresh review coverage", guidance)
+
     def reviewer_task(self) -> dict:
         evidence = contract_tool.load_json_file(
             str(ROOT / "examples" / "acceptance_evidence.json")
@@ -469,6 +485,8 @@ class WorkflowToolTests(unittest.TestCase):
         self.assertIn("wall-clock, turn, and output ceilings", report["prompt"])
         self.assertIn("changed_paths must be []", report["prompt"])
         self.assertIn("CLEAN and FINDINGS both require at least one check", report["prompt"])
+        self.assertIn("Do not require generated dependency trees", report["prompt"])
+        self.assertIn("exact dependency runtime", report["prompt"])
         template_text, rest = report["prompt"].split(
             "RESULT_TEMPLATE_JSON\n", 1
         )[1].split("\nITEM_SHAPES_JSON\n", 1)

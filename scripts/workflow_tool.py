@@ -102,15 +102,16 @@ ROLE_INSTRUCTIONS = {
         "callers. Do not edit, broaden scope, or declare final acceptance."
     ),
     "reviewer": (
-        "Review only the exact immutable artifact named by artifact_path, "
-        "snapshot_id, and content_identity. Reconstruct the scoped diff from its "
-        "baseline/ and files/ entries; inspect every review_path and named direct "
-        "caller or consumer. Check correctness, regressions, edge cases, security "
-        "and privacy, and relevant performance, accessibility, and test coverage. "
-        "Do not inspect the moving workspace or edit anything. CLEAN requires "
-        "complete reviewed_paths, passing checks, and no open finding or risk. "
-        "FINDINGS requires bounded actionable findings with locations and evidence. "
-        "A reviewer cannot claim acceptance or authorize a commit."
+        "Review exact immutable artifact: artifact_path, snapshot_id, "
+        "and content_identity. Reconstruct diff from baseline/ and files/; inspect "
+        "every review_path and named caller. Check correctness, regressions, security, "
+        "edge cases, performance, coverage. Treat declared "
+        "manifests/lockfiles/config as inputs. Do not require generated dependency "
+        "trees (node_modules); do not claim test execution without an exact dependency "
+        "runtime. Do not inspect the moving workspace or edit. CLEAN "
+        "requires complete reviewed_paths, passing checks, and no risk. FINDINGS "
+        "requires bounded findings with locations/evidence. Never claim acceptance or "
+        "commit authority."
     ),
 }
 
@@ -215,7 +216,7 @@ GUIDES: dict[str, dict[str, Any]] = {
             "ownership": "One writer per mutable workspace. The main agent owns scope, integration, full validation, acceptance, and permissions.",
         },
         "sequence": [
-            "Plan and implement within the frozen scope; keep verbose command output in files and inspect bounded excerpts instead of pasting complete diffs or logs.",
+            "Plan and implement within the frozen scope; group related edits into one patch per checkpoint, avoid one-file-at-a-time writes, and keep verbose command output in files and inspect bounded excerpts instead of pasting complete diffs or logs.",
             "At each parent-owned completed checkpoint, inspect /status and use /compact when context is high when available; never compact during a protected Reviewer wait.",
             "Use a side task, fresh subagent, or new task for unrelated work rather than extending the main thread with another branch.",
             "Choose the Reviewer budget before freezing; create and verify one exact snapshot outside the repository.",
@@ -223,6 +224,10 @@ GUIDES: dict[str, dict[str, Any]] = {
             "For findings, fix only confirmed in-scope issues, rerun checks, create a new snapshot, and obtain complete fresh coverage.",
             "Generate evidence from observations, run live accept, then perform the parent's remaining confirmations.",
         ],
+        "output_noise": {
+            "rule": "Keep progress commentary at milestone level; do not report each generated file. Helper-generated records should use one transactional publication when supported.",
+            "boundary": "This reduces file-change events caused by the workflow but cannot suppress TUI events emitted by the Codex host for actual filesystem mutations.",
+        },
         "commands": GUIDE_COMMANDS,
         "observations": {
             "version": OBSERVATIONS_VERSION,
@@ -286,6 +291,21 @@ GUIDES: dict[str, dict[str, Any]] = {
             "read_only_enforcement": ["parent_sandbox", "custom_agent_sandbox", "unverified"],
             "artifact_only_read_enforcement": ["container_mount", "read_allowlist", "none", "unknown"],
             "rule": "Read-only protects writes, not reads. Claim exclusive artifact access or confidentiality only when a mount or allowlist enforces it.",
+        },
+        "dependency_boundary": {
+            "include": [
+                "For JavaScript/TypeScript work, include package.json when scripts, dependencies, engines, exports, or package metadata affect the review.",
+                "Include the active lockfile and relevant TypeScript/test/build configuration when installation, reproduction, or behavior depends on them.",
+            ],
+            "exclude": [
+                "Do not add node_modules, build outputs, coverage, package-manager caches, or other generated dependency trees to review_paths.",
+                "The frozen artifact is a source/review snapshot, not a dependency image; generated trees increase artifact size and are platform/runtime-specific.",
+            ],
+            "validation": [
+                "Parent-run typecheck, test, and build commands are validation evidence, not independent Reviewer execution.",
+                "If Reviewer execution is required, provide the exact dependency runtime outside the artifact and keep temporary outputs outside the read-only snapshot.",
+            ],
+            "scope_change": "Adding a manifest or configuration path changes the frozen scope: create and verify a new snapshot and obtain fresh review coverage.",
         },
         "snapshot": [GUIDE_COMMANDS["snapshot_create"], GUIDE_COMMANDS["snapshot_verify"]],
         "validation": "The parent validates task/run/snapshot/content identity, scope, artifact access, coverage, checks, model provenance, and workspace comparison. Contract validation alone does not observe runtime state.",

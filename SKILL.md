@@ -28,6 +28,9 @@ acceptance, and permissions. Do not use for explanations or read-only questions.
   results or permission to retry, replace, take over, unlock, or accept.
 - Generate evidence from observed records with `workflow_tool.py`; keep hashes, IDs,
   and record details in its optional attachment. The parent still does live checks.
+- Batch related edits into one patch per checkpoint, keep helper-generated records in
+  one transactional publication when supported, and report progress at milestone
+  level rather than per file.
 - Commit only after acceptance, an explicit user request, a clean starting index,
   and no pre-existing overlap. External changes need separate authorization.
 

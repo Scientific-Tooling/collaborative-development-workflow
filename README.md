@@ -87,7 +87,9 @@ tool_output_token_limit = 8000
 Keep large logs on disk and inspect targeted excerpts. At each completed milestone,
 use `/status` and then `/compact` when the context is high; use a side task or
 fresh subagent for unrelated work. Do not compact during a protected Reviewer
-wait. This limit controls individual tool output, not the whole context window.
+wait. Group related edits into one patch per checkpoint and report progress at
+milestone level; this reduces, but cannot disable, host-generated file-change
+summaries. This limit controls individual tool output, not the whole context window.
 
 ## Files and tools
 
@@ -113,6 +115,19 @@ the target project's `.codex/agents/` or the user's Codex agent directory with
 authorization, then confirm the effective settings for each run. Read-only blocks
 writes but does not hide readable files; record the separate artifact-only read
 boundary truthfully.
+
+### Snapshot and dependency boundary
+
+For JavaScript/TypeScript changes, add `package.json`, the active lockfile, and
+relevant tool configuration to `review_paths` when they affect the change or its
+checks. Do not add `node_modules`, build outputs, coverage, or package-manager
+caches: the frozen artifact is a source/review snapshot, not a dependency image.
+
+The parent may run `typecheck`, `test`, and `build` in the live workspace and record
+those results as validation evidence. They are not independent Reviewer execution.
+If the Reviewer must run tests, provide an exact dependency runtime outside the
+artifact with temporary outputs outside the read-only snapshot. Changing the
+declared review scope requires a new snapshot and fresh review.
 
 ## Development checks
 

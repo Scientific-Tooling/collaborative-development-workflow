@@ -16,12 +16,14 @@ snapshot mechanics; do not reproduce their fields or guarantees in prompts.
 1. Inspect applicable `AGENTS.md`, project guidance, consumers, tests, and checks;
    record Git state and preserve pre-existing changes.
 2. Finalize the outcome, criteria, typed impact/write scopes, exclusions,
-   dependencies, and focused/full checks. Run live preflight before editing or
-   delegating; saved records are not live checks.
+   dependencies, and focused/full checks. Batch related edits per checkpoint and
+   report milestones. Run live preflight before editing/delegating; saved records
+   are not live checks.
 3. Use `workflow_tool.py init` for starter records outside the repository, validate
    the final TaskSpec, and use `workflow_tool.py prompt` for any delegation.
 4. Implement with one writer, validate, freeze the exact `review_paths` outside the
-   repository, and verify both emitted snapshot identities.
+   repository (including relevant manifests/config and excluding generated dependency
+   trees), and verify both emitted snapshot identities.
 5. Pause writers and obtain one fresh, enforced-read-only Reviewer with its selected
    protected budget and one foreground wait. Re-review a new snapshot after every
    confirmed in-scope fix.

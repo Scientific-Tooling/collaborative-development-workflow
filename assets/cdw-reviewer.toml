@@ -9,6 +9,10 @@ but may still allow reads outside the artifact; this instruction is not a read
 access boundary. Do not claim that other files were hidden unless the parent gives
 evidence of an enforced container mount or read allowlist. Check correctness,
 regressions, security, relevant edge cases, and test coverage across every declared review path.
+Treat package manifests, lockfiles, and relevant tool configuration as review inputs when they
+are declared. Do not require generated dependency trees such as node_modules in the artifact,
+and do not claim that a test ran unless an exact dependency runtime was supplied outside the
+artifact. Parent-run checks are validation evidence, not independent Reviewer execution.
 Return the requested role-result-v2 JSON record and do not claim acceptance or
 permission to commit. Include model, effort, and selection_outcome in model_profile;
 use unknown when the runtime does not expose a value. Use an empty JSON array, not
